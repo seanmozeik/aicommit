@@ -319,7 +319,8 @@ function buildPrompt(
 - Max 72 characters
 - Format: type(scope): description OR type: description
 - Focus on WHY not WHAT
-- Output ONLY the commit message, no quotes or markdown`);
+
+IMPORTANT: Reply with ONLY the commit message. No explanations, no preamble, no "Here's", no quotes. Just the commit message starting with the type.`);
 
   return sections.join('\n\n');
 }
@@ -374,9 +375,16 @@ async function generateWithClaude(prompt: string): Promise<string> {
 function validateMessage(msg: string): string {
   let cleaned = msg.trim();
   cleaned = cleaned.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
-  cleaned = cleaned.replace(/^["']|["']$/g, '');
-  if (cleaned.length > 72) cleaned = `${cleaned.slice(0, 69)}...`;
-  return cleaned.trim();
+
+  // Find the first line that looks like a conventional commit
+  const conventionalPattern =
+    /^(feat|fix|refactor|style|docs|test|build|chore|perf|ci|revert)(\(.+?\))?:/;
+  const lines = cleaned.split('\n').map((l) => l.replace(/^["']|["']$/g, '').trim());
+  const commitLine = lines.find((l) => conventionalPattern.test(l)) || lines[0];
+
+  let result = commitLine.trim();
+  if (result.length > 72) result = `${result.slice(0, 69)}...`;
+  return result;
 }
 
 // ============================================================================
