@@ -8,13 +8,24 @@ import { $ } from 'bun';
 // ============================================================================
 
 async function getSecret(key: string): Promise<string | null> {
-  try {
-    const result =
-      await $`security find-generic-password -a ${process.env.USER} -s aic-${key} -w`.quiet();
-    return result.text().trim();
-  } catch {
-    return null;
+  // 1. Check environment variable first (cross-platform, works on Linux)
+  const envKey = `AIC_${key}`;
+  if (process.env[envKey]) {
+    return process.env[envKey]!;
   }
+
+  // 2. Try macOS Keychain if on darwin
+  if (process.platform === 'darwin') {
+    try {
+      const result =
+        await $`security find-generic-password -a ${process.env.USER} -s aic-${key} -w`.quiet();
+      return result.text().trim();
+    } catch {
+      // Keychain lookup failed
+    }
+  }
+
+  return null;
 }
 
 // ============================================================================
@@ -56,6 +67,20 @@ const SUMMARY_ONLY_PATTERNS: RegExp[] = [];
 
 const MAX_LINES_PER_FILE = 50;
 const MAX_TOTAL_DIFF_LINES = 1500;
+
+const COMMIT_TYPES: Record<string, string> = {
+  feat: 'A new feature for the user',
+  fix: 'A bug fix',
+  refactor: 'Code restructuring without changing behavior',
+  style: 'Formatting, whitespace, or style changes',
+  docs: 'Documentation only changes',
+  test: 'Adding or updating tests',
+  build: 'Build system or external dependency changes',
+  chore: 'Maintenance tasks, no production code change',
+  perf: 'Performance improvements',
+  ci: 'CI/CD configuration changes',
+  revert: 'Reverting a previous commit'
+};
 
 // ============================================================================
 // Types
@@ -314,8 +339,14 @@ function buildPrompt(
 
   if (compressedDiffs) sections.push(`## Diff\n${compressedDiffs}`);
 
-  sections.push(`## Rules
-- Type: feat|fix|refactor|style|docs|test|build|chore|perf|ci|revert
+  const typeDescriptions = Object.entries(COMMIT_TYPES)
+    .map(([k, v]) => `- ${k}: ${v}`)
+    .join('\n');
+
+  sections.push(`## Commit Types
+${typeDescriptions}
+
+## Rules
 - Max 72 characters
 - Format: type(scope): description OR type: description
 - Focus on WHY not WHAT
@@ -329,7 +360,9 @@ IMPORTANT: Reply with ONLY the commit message. No explanations, no preamble, no 
 // AI Generation
 // ============================================================================
 
-async function generateWithCloudflare(prompt: string): Promise<string> {
+async function generateWithCloudflare(
+  prompt: string
+): Promise<{ text: string; usage?: { input_tokens: number; output_tokens: number } }> {
   const accountId = await getSecret('CLOUDFLARE_ACCOUNT_ID');
   const apiToken = await getSecret('CLOUDFLARE_API_TOKEN');
 
@@ -431,12 +464,12 @@ function validateMessage(msg: string): string {
   let diffOutput: string;
   if (hasStaged) {
     p.log.info('Using staged files only');
-    diffOutput = await $`git diff --cached`.text();
+    diffOutput = await $`git diff --cached --diff-algorithm=minimal`.text();
   } else if (!hasHead) {
     p.outro('Initial commit: stage files first with "git add"');
     process.exit(0);
   } else {
-    diffOutput = await $`git diff HEAD`.text();
+    diffOutput = await $`git diff HEAD --diff-algorithm=minimal`.text();
   }
 
   if (!diffOutput.trim()) {
@@ -513,7 +546,7 @@ function validateMessage(msg: string): string {
     }
 
     if (shouldCommit) {
-      await $`git commit -m ${commitMessage}`;
+      await $`git commit -m ${commitMessage}`.quiet();
       p.outro('Committed!');
       process.exit(0);
     }
