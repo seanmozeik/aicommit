@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "@clack/prompts": "^0.11.0"
+  },
+  "description": "AI Commit Message Generator",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  },
+  "name": "AICommit",
+  "scripts": {
+    "build": "bun build ./index.ts --compile --outfile aic --minify",
+    "dev": "bun run index.ts"
+  },
+  "type": "module",
+  "version": "1.0.0"
+}

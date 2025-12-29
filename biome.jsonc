@@ -1,0 +1,74 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.3.10/schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on",
+        "useSortedKeys": "on"
+      }
+    },
+    "enabled": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": ["**", "!node_modules", "!dist", "!build", "!**/*.d.ts"]
+  },
+  "formatter": {
+    "attributePosition": "auto",
+    "bracketSameLine": false,
+    "bracketSpacing": true,
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "arrowParentheses": "always",
+      "bracketSameLine": false,
+      "bracketSpacing": true,
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "none"
+    },
+    "globals": ["Bun"]
+  },
+  "json": {
+    "formatter": {
+      "indentStyle": "space",
+      "indentWidth": 2,
+      "trailingCommas": "none"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "complexity": {
+        "noForEach": "warn"
+      },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
+      },
+      "recommended": true,
+      "style": {
+        "noDefaultExport": "off",
+        "useConst": "error",
+        "useImportType": "error",
+        "useNodejsImportProtocol": "error",
+        "useTemplate": "error"
+      },
+      "suspicious": {
+        "noConsole": "off",
+        "noExplicitAny": "error"
+      }
+    }
+  },
+  "vcs": {
+    "clientKind": "git",
+    "defaultBranch": "main",
+    "enabled": true,
+    "useIgnoreFile": true
+  }
+}
