@@ -29,7 +29,7 @@ build:
     bun build ./index.ts --compile --outfile aic --minify
     mkdir -p ~/.local/bin
     mv aic ~/.local/bin/
-    rm -f ./*.bun-build
+    rm -f ./.*bun-build
     @echo "✓ Installed to ~/.local/bin/aic"
 
 # Install dependencies

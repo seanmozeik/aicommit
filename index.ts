@@ -338,10 +338,11 @@ async function generateWithCloudflare(prompt: string): Promise<string> {
   }
 
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.1-8b-instruct`,
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/responses`,
     {
       body: JSON.stringify({
-        messages: [{ content: prompt, role: 'user' }]
+        input: prompt,
+        model: '@cf/openai/gpt-oss-20b'
       }),
       headers: {
         Authorization: `Bearer ${apiToken}`,
@@ -356,16 +357,26 @@ async function generateWithCloudflare(prompt: string): Promise<string> {
     throw new Error(`Cloudflare API error: ${error}`);
   }
 
-  const data = (await response.json()) as { result?: { response?: string } };
-  return data.result?.response || '';
+  const data = (await response.json()) as {
+    output?: { type: string; content?: { text?: string }[] }[];
+    usage?: { input_tokens: number; output_tokens: number };
+  };
+  // Find the message output (not reasoning) and extract text
+  const message = data.output?.find((o) => o.type === 'message');
+  const text = message?.content?.[0]?.text || '';
+  const usage = data.usage;
+  return { text, usage };
 }
 
-async function generateWithClaude(prompt: string): Promise<string> {
+async function generateWithClaude(
+  prompt: string
+): Promise<{ text: string; usage?: { input_tokens: number; output_tokens: number } }> {
   const proc = Bun.spawn({
     cmd: ['claude', '--model', 'haiku', '-p', prompt],
     stdout: 'pipe'
   });
-  return (await new Response(proc.stdout).text()).trim();
+  const text = (await new Response(proc.stdout).text()).trim();
+  return { text };
 }
 
 // ============================================================================
@@ -473,10 +484,16 @@ function validateMessage(msg: string): string {
 
   let commitMessage: string;
   try {
-    const rawResponse =
+    const response =
       model === 'claude' ? await generateWithClaude(prompt) : await generateWithCloudflare(prompt);
-    commitMessage = validateMessage(rawResponse);
-    s.stop('Done');
+    commitMessage = validateMessage(response.text);
+    const usage = response.usage;
+    if (usage) {
+      const neurons = Math.round(usage.input_tokens * 0.018182 + usage.output_tokens * 0.027273);
+      s.stop(`Done (in: ${usage.input_tokens}, out: ${usage.output_tokens}, ~${neurons} neurons)`);
+    } else {
+      s.stop('Done');
+    }
   } catch (err) {
     s.stop('Failed');
     p.log.error(err instanceof Error ? err.message : String(err));
