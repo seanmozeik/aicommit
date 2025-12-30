@@ -720,7 +720,7 @@ function validateMessage(msg: string): string {
       }
 
       try {
-        await $`git push`;
+        await $`git push`.quiet();
       } catch (err) {
         p.log.error(`Push failed: ${err instanceof Error ? err.message : err}`);
         p.outro('Committed locally, but push failed');
