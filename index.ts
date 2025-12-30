@@ -477,6 +477,70 @@ function validateMessage(msg: string): string {
 (async () => {
   p.intro('aic');
 
+  // Check if there are staged files first
+  const stagedCheck = (await $`git diff --cached --name-only`.text()).trim();
+  let hasStaged = stagedCheck.length > 0;
+
+  // Check if HEAD exists (false for initial commit)
+  let hasHead = true;
+  try {
+    await $`git rev-parse HEAD`.quiet();
+  } catch {
+    hasHead = false;
+  }
+
+  // If no files staged and we have HEAD, offer file selection
+  if (!hasStaged && hasHead) {
+    const statusOutput = (await $`git status --porcelain`.text()).trim();
+    const changedFiles = statusOutput
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const status = line.slice(0, 2);
+        const path = line.slice(2).trimStart();
+        // Status codes: M=modified, A=added, D=deleted, ??=untracked
+        const isUntracked = status === '??';
+        const isModified = status.includes('M');
+        const isDeleted = status.includes('D');
+        return {
+          hint: isUntracked
+            ? 'new'
+            : isModified
+              ? 'modified'
+              : isDeleted
+                ? 'deleted'
+                : status.trim(),
+          path,
+          status
+        };
+      });
+
+    if (changedFiles.length > 0 && changedFiles.length <= 15) {
+      const selected = await p.multiselect({
+        message: 'Select files to stage:',
+        options: [
+          { hint: 'generate from all changes', label: 'Skip', value: '__skip__' },
+          ...changedFiles.map((f) => ({
+            hint: f.hint,
+            label: f.path,
+            value: f.path
+          }))
+        ]
+      });
+
+      if (p.isCancel(selected)) {
+        p.outro('Cancelled');
+        process.exit(0);
+      }
+
+      const filesToStage = (selected as string[]).filter((f) => f !== '__skip__');
+      if (filesToStage.length > 0) {
+        await $`git add ${filesToStage}`;
+        hasStaged = true;
+      }
+    }
+  }
+
   const userInput = await p.text({
     defaultValue: '',
     message: 'Describe your changes (optional):'
@@ -485,18 +549,6 @@ function validateMessage(msg: string): string {
   if (p.isCancel(userInput)) {
     p.outro('Cancelled');
     process.exit(0);
-  }
-
-  // Check if there are staged files first
-  const stagedCheck = (await $`git diff --cached --name-only`.text()).trim();
-  const hasStaged = stagedCheck.length > 0;
-
-  // Check if HEAD exists (false for initial commit)
-  let hasHead = true;
-  try {
-    await $`git rev-parse HEAD`.quiet();
-  } catch {
-    hasHead = false;
   }
 
   // Single git call - get everything at once
@@ -575,38 +627,52 @@ function validateMessage(msg: string): string {
   // Display the message
   p.note(commitMessage, 'Commit Message');
 
-  // Commit or copy
-  if (hasStaged) {
-    const shouldCommit = await p.confirm({ message: 'Commit staged files with this message?' });
+  // Action menu
+  let finalMessage = commitMessage;
 
-    if (p.isCancel(shouldCommit)) {
-      p.outro('Cancelled');
+  while (true) {
+    const action = await p.select({
+      message: 'What would you like to do?',
+      options: [
+        ...(hasStaged ? [{ hint: 'staged files', label: 'Commit', value: 'commit' }] : []),
+        { hint: 'modify the message', label: 'Edit', value: 'edit' },
+        { label: 'Copy to clipboard', value: 'copy' },
+        { label: 'Cancel', value: 'cancel' }
+      ]
+    });
+
+    if (p.isCancel(action) || action === 'cancel') {
+      p.outro('Done');
       process.exit(0);
     }
 
-    if (shouldCommit) {
-      await $`git commit -m ${commitMessage}`.quiet();
+    if (action === 'edit') {
+      const edited = await p.text({
+        initialValue: finalMessage,
+        message: 'Edit commit message:'
+      });
+
+      if (p.isCancel(edited)) continue;
+      finalMessage = edited as string;
+      p.note(finalMessage, 'Commit Message');
+      continue;
+    }
+
+    if (action === 'commit') {
+      await $`git commit -m ${finalMessage}`.quiet();
       p.outro('Committed!');
       process.exit(0);
     }
-  }
 
-  const shouldCopy = await p.confirm({ message: 'Copy to clipboard?' });
-
-  if (p.isCancel(shouldCopy)) {
-    p.outro('Done');
-    process.exit(0);
-  }
-
-  if (shouldCopy) {
-    const copied = await copyToClipboard(commitMessage);
-    if (copied) {
-      p.outro('Copied to clipboard!');
-    } else {
-      p.log.warn('No clipboard tool found. Install xclip, xsel, or wl-copy.');
-      p.outro(commitMessage);
+    if (action === 'copy') {
+      const copied = await copyToClipboard(finalMessage);
+      if (copied) {
+        p.outro('Copied to clipboard!');
+      } else {
+        p.log.warn('No clipboard tool found. Install xclip, xsel, or wl-copy.');
+        p.outro(finalMessage);
+      }
+      process.exit(0);
     }
-  } else {
-    p.outro('Done');
   }
 })();
