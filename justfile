@@ -1,8 +1,8 @@
 default:
     @just --list
 
-# Store .env secrets to macOS Keychain
-setup:
+# Store .env secrets to macOS Keychain (macOS only)
+setup-mac:
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ ! -f .env ]]; then
@@ -14,11 +14,18 @@ setup:
         [[ -z "$key" || "$key" =~ ^# ]] && continue
         value="${value#\"}" && value="${value%\"}"
         value="${value#\'}" && value="${value%\'}"
-        security delete-generic-password -a "$USER" -s "aic-$key" 2>/dev/null || true
-        security add-generic-password -a "$USER" -s "aic-$key" -w "$value"
-        echo "✓ Stored $key"
+        service="AIC_$key"
+        security delete-generic-password -a "$USER" -s "$service" 2>/dev/null || true
+        security add-generic-password -a "$USER" -s "$service" -w "$value"
+        echo "✓ Stored $service"
     done < .env
     echo "Done! You can now delete .env"
+
+# Remove secrets from macOS Keychain (macOS only)
+teardown-mac:
+    #!/usr/bin/env bash
+    security delete-generic-password -a "$USER" -s "AIC_CLOUDFLARE_ACCOUNT_ID" 2>/dev/null && echo "✓ Removed AIC_CLOUDFLARE_ACCOUNT_ID" || echo "✗ AIC_CLOUDFLARE_ACCOUNT_ID not found"
+    security delete-generic-password -a "$USER" -s "AIC_CLOUDFLARE_API_TOKEN" 2>/dev/null && echo "✓ Removed AIC_CLOUDFLARE_API_TOKEN" || echo "✗ AIC_CLOUDFLARE_API_TOKEN not found"
 
 # Run in development
 dev:

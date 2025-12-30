@@ -18,7 +18,7 @@ async function getSecret(key: string): Promise<string | null> {
   if (process.platform === 'darwin') {
     try {
       const result =
-        await $`security find-generic-password -a ${process.env.USER} -s aic-${key} -w`.quiet();
+        await $`security find-generic-password -a ${process.env.USER} -s ${envKey} -w`.quiet();
       return result.text().trim();
     } catch {
       // Keychain lookup failed
@@ -413,6 +413,44 @@ async function generateWithClaude(
 }
 
 // ============================================================================
+// Clipboard (cross-platform)
+// ============================================================================
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (process.platform === 'darwin') {
+    const proc = Bun.spawn(['pbcopy'], { stdin: 'pipe' });
+    proc.stdin.write(text);
+    proc.stdin.end();
+    await proc.exited;
+    return true;
+  }
+
+  // Linux: try available clipboard tools in order of preference
+  const tools: string[][] = [
+    ['xclip', '-selection', 'clipboard'],
+    ['xsel', '--clipboard', '--input'],
+    ['wl-copy'] // Wayland
+  ];
+
+  for (const cmd of tools) {
+    try {
+      const which = await $`which ${cmd[0]}`.quiet();
+      if (which.exitCode === 0) {
+        const proc = Bun.spawn(cmd, { stdin: 'pipe' });
+        proc.stdin.write(text);
+        proc.stdin.end();
+        await proc.exited;
+        return true;
+      }
+    } catch {
+      // Tool not found, try next
+    }
+  }
+
+  return false;
+}
+
+// ============================================================================
 // Validation
 // ============================================================================
 
@@ -560,14 +598,13 @@ function validateMessage(msg: string): string {
   }
 
   if (shouldCopy) {
-    const isMac = process.platform === 'darwin';
-    const clipboardCmd = isMac ? ['pbcopy'] : ['xclip', '-selection', 'clipboard'];
-
-    const proc = Bun.spawn(clipboardCmd, { stdin: 'pipe' });
-    proc.stdin.write(commitMessage);
-    proc.stdin.flush();
-    proc.stdin.end();
-    p.outro('Copied to clipboard!');
+    const copied = await copyToClipboard(commitMessage);
+    if (copied) {
+      p.outro('Copied to clipboard!');
+    } else {
+      p.log.warn('No clipboard tool found. Install xclip, xsel, or wl-copy.');
+      p.outro(commitMessage);
+    }
   } else {
     p.outro('Done');
   }
