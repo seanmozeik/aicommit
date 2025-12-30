@@ -9,8 +9,8 @@ import { $ } from 'bun';
 
 async function getSecret(key: string): Promise<string | null> {
   // 1. Check environment variable first (cross-platform, works on Linux)
-  const envKey = `AIC_${key}`;
-  const envValue = process.env[envKey];
+  // Key should already include AIC_ prefix (e.g., AIC_CLOUDFLARE_ACCOUNT_ID)
+  const envValue = process.env[key];
   if (envValue) {
     return envValue;
   }
@@ -19,15 +19,7 @@ async function getSecret(key: string): Promise<string | null> {
   if (process.platform === 'darwin') {
     try {
       const proc = Bun.spawn({
-        cmd: [
-          'security',
-          'find-generic-password',
-          '-a',
-          process.env.USER ?? '',
-          '-s',
-          envKey,
-          '-w'
-        ],
+        cmd: ['security', 'find-generic-password', '-a', process.env.USER ?? '', '-s', key, '-w'],
         stderr: 'pipe',
         stdout: 'pipe'
       });
@@ -378,8 +370,8 @@ IMPORTANT: Reply with ONLY the commit message. No explanations, no preamble, no 
 async function generateWithCloudflare(
   prompt: string
 ): Promise<{ text: string; usage?: { input_tokens: number; output_tokens: number } }> {
-  const accountId = await getSecret('CLOUDFLARE_ACCOUNT_ID');
-  const apiToken = await getSecret('CLOUDFLARE_API_TOKEN');
+  const accountId = await getSecret('AIC_CLOUDFLARE_ACCOUNT_ID');
+  const apiToken = await getSecret('AIC_CLOUDFLARE_API_TOKEN');
 
   if (!accountId || !apiToken) {
     throw new Error('Missing secrets in keychain. Run "just setup" with a .env file first.');
