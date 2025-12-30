@@ -660,7 +660,16 @@ function validateMessage(msg: string): string {
 
     if (action === 'commit') {
       await $`git commit -m ${finalMessage}`.quiet();
-      p.outro('Committed!');
+
+      const shouldPush = await p.confirm({ message: 'Push to remote?' });
+
+      if (p.isCancel(shouldPush) || !shouldPush) {
+        p.outro('Committed!');
+        process.exit(0);
+      }
+
+      await $`git push`.quiet();
+      p.outro('Committed and pushed!');
       process.exit(0);
     }
 
