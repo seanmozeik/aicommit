@@ -7,7 +7,7 @@
     "@types/bun": "latest",
     "typescript": "^5.9.3"
   },
-  "name": "AICommit",
+  "name": "aicommit",
   "scripts": {
     "build": "bun build ./index.ts --compile --outfile aic --minify",
     "dev": "bun run index.ts"

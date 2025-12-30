@@ -10,8 +10,9 @@ import { $ } from 'bun';
 async function getSecret(key: string): Promise<string | null> {
   // 1. Check environment variable first (cross-platform, works on Linux)
   const envKey = `AIC_${key}`;
-  if (process.env[envKey]) {
-    return process.env[envKey]!;
+  const envValue = process.env[envKey];
+  if (envValue) {
+    return envValue;
   }
 
   // 2. Try macOS Keychain if on darwin
@@ -69,17 +70,17 @@ const MAX_LINES_PER_FILE = 50;
 const MAX_TOTAL_DIFF_LINES = 1500;
 
 const COMMIT_TYPES: Record<string, string> = {
-  feat: 'A new feature for the user',
-  fix: 'A bug fix',
-  refactor: 'Code restructuring without changing behavior',
-  style: 'Formatting, whitespace, or style changes',
-  docs: 'Documentation only changes',
-  test: 'Adding or updating tests',
   build: 'Build system or external dependency changes',
   chore: 'Maintenance tasks, no production code change',
-  perf: 'Performance improvements',
   ci: 'CI/CD configuration changes',
-  revert: 'Reverting a previous commit'
+  docs: 'Documentation only changes',
+  feat: 'A new feature for the user',
+  fix: 'A bug fix',
+  perf: 'Performance improvements',
+  refactor: 'Code restructuring without changing behavior',
+  revert: 'Reverting a previous commit',
+  style: 'Formatting, whitespace, or style changes',
+  test: 'Adding or updating tests'
 };
 
 // ============================================================================
