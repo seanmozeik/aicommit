@@ -18,9 +18,23 @@ async function getSecret(key: string): Promise<string | null> {
   // 2. Try macOS Keychain if on darwin
   if (process.platform === 'darwin') {
     try {
-      const result =
-        await $`security find-generic-password -a ${process.env.USER} -s ${envKey} -w`.quiet();
-      return result.text().trim();
+      const proc = Bun.spawn({
+        cmd: [
+          'security',
+          'find-generic-password',
+          '-a',
+          process.env.USER ?? '',
+          '-s',
+          envKey,
+          '-w'
+        ],
+        stderr: 'pipe',
+        stdout: 'pipe'
+      });
+      const exitCode = await proc.exited;
+      if (exitCode === 0) {
+        return (await new Response(proc.stdout).text()).trim();
+      }
     } catch {
       // Keychain lookup failed
     }
@@ -491,6 +505,20 @@ function validateMessage(msg: string): string {
 
   // If no files staged and we have HEAD, offer file selection
   if (!hasStaged && hasHead) {
+    // Get submodule paths to exclude from staging options
+    const submodulePaths = new Set<string>();
+    try {
+      const submoduleOutput = (
+        await $`git config --file .gitmodules --get-regexp path`.quiet()
+      ).text();
+      for (const line of submoduleOutput.split('\n').filter(Boolean)) {
+        const match = line.match(/submodule\..*\.path\s+(.+)/);
+        if (match) submodulePaths.add(match[1]);
+      }
+    } catch {
+      // No .gitmodules or no submodules configured
+    }
+
     const statusOutput = (await $`git status --porcelain`.text()).trim();
     const changedFiles = statusOutput
       .split('\n')
@@ -513,7 +541,8 @@ function validateMessage(msg: string): string {
           path,
           status
         };
-      });
+      })
+      .filter((f) => !submodulePaths.has(f.path));
 
     if (changedFiles.length > 0 && changedFiles.length <= 15) {
       const selected = await p.multiselect({
