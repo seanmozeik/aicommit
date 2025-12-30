@@ -483,8 +483,14 @@ function validateMessage(msg: string): string {
 (async () => {
   p.intro('aic');
 
-  // Check if there are staged files first
-  const stagedCheck = (await $`git diff --cached --name-only`.text()).trim();
+  // Check if we're in a git repo
+  let stagedCheck: string;
+  try {
+    stagedCheck = (await $`git diff --cached --name-only`.text()).trim();
+  } catch {
+    p.outro('Not a git repository');
+    process.exit(1);
+  }
   let hasStaged = stagedCheck.length > 0;
 
   // Check if HEAD exists (false for initial commit)
@@ -511,7 +517,13 @@ function validateMessage(msg: string): string {
       // No .gitmodules or no submodules configured
     }
 
-    const statusOutput = (await $`git status --porcelain`.text()).trim();
+    let statusOutput: string;
+    try {
+      statusOutput = (await $`git status --porcelain`.text()).trim();
+    } catch {
+      p.log.warn('Failed to get git status');
+      statusOutput = '';
+    }
     const changedFiles = statusOutput
       .split('\n')
       .filter(Boolean)
@@ -556,8 +568,14 @@ function validateMessage(msg: string): string {
 
       const filesToStage = (selected as string[]).filter((f) => f !== '__skip__');
       if (filesToStage.length > 0) {
-        await $`git add ${filesToStage}`;
-        hasStaged = true;
+        try {
+          await $`git add ${filesToStage}`;
+          hasStaged = true;
+        } catch (err) {
+          p.log.error(`Failed to stage files: ${err instanceof Error ? err.message : err}`);
+          p.outro('Aborted');
+          process.exit(1);
+        }
       }
     }
   }
@@ -574,14 +592,20 @@ function validateMessage(msg: string): string {
 
   // Single git call - get everything at once
   let diffOutput: string;
-  if (hasStaged) {
-    p.log.info('Using staged files only');
-    diffOutput = await $`git diff --cached --diff-algorithm=minimal`.text();
-  } else if (!hasHead) {
-    p.outro('Initial commit: stage files first with "git add"');
-    process.exit(0);
-  } else {
-    diffOutput = await $`git diff HEAD --diff-algorithm=minimal`.text();
+  try {
+    if (hasStaged) {
+      p.log.info('Using staged files only');
+      diffOutput = await $`git diff --cached --diff-algorithm=minimal`.text();
+    } else if (!hasHead) {
+      p.outro('Initial commit: stage files first with "git add"');
+      process.exit(0);
+    } else {
+      diffOutput = await $`git diff HEAD --diff-algorithm=minimal`.text();
+    }
+  } catch (err) {
+    p.log.error(`Failed to get diff: ${err instanceof Error ? err.message : err}`);
+    p.outro('Aborted');
+    process.exit(1);
   }
 
   if (!diffOutput.trim()) {
@@ -680,7 +704,13 @@ function validateMessage(msg: string): string {
     }
 
     if (action === 'commit') {
-      await $`git commit -m ${finalMessage}`.quiet();
+      try {
+        await $`git commit -m ${finalMessage}`.quiet();
+      } catch (err) {
+        p.log.error(`Commit failed: ${err instanceof Error ? err.message : err}`);
+        p.outro('Aborted');
+        process.exit(1);
+      }
 
       const shouldPush = await p.confirm({ message: 'Push to remote?' });
 
@@ -689,7 +719,13 @@ function validateMessage(msg: string): string {
         process.exit(0);
       }
 
-      await $`git push`.quiet();
+      try {
+        await $`git push`;
+      } catch (err) {
+        p.log.error(`Push failed: ${err instanceof Error ? err.message : err}`);
+        p.outro('Committed locally, but push failed');
+        process.exit(1);
+      }
       p.outro('Committed and pushed!');
       process.exit(0);
     }
