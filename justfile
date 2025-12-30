@@ -28,11 +28,11 @@ teardown-mac:
 
 # Run in development
 dev:
-    bun run index.ts
+    bun run src/index.ts
 
 # Build and install to ~/.local/bin
 build:
-    bun build ./index.ts --compile --outfile aic --minify
+    bun build ./src/index.ts --compile --outfile aic --minify
     mkdir -p ~/.local/bin
     mv aic ~/.local/bin/
     rm -f ./.*bun-build
