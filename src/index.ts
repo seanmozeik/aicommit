@@ -3,8 +3,10 @@
 import * as p from '@clack/prompts';
 import {
   buildPrompt,
+  deleteSecret,
   generateWithClaude,
   generateWithCloudflare,
+  setSecret,
   validateMessage
 } from './lib/ai.js';
 import { copyToClipboard } from './lib/clipboard.js';
@@ -35,17 +37,109 @@ import { frappe, theme } from './ui/theme.js';
 // ============================================================================
 
 const args = Bun.argv.slice(2);
-const modelIndex = args.indexOf('--model');
-const model: ModelType = modelIndex !== -1 ? (args[modelIndex + 1] as ModelType) : 'cloudflare';
+const command = args[0];
 
-if (model !== 'cloudflare' && model !== 'claude') {
-  console.error('Invalid --model. Use "cloudflare" (default) or "claude"');
-  process.exit(1);
+// ============================================================================
+// Setup Command - Interactive secret configuration
+// ============================================================================
+
+async function setupSecrets() {
+  showBanner();
+  p.intro(frappe.text('Setup Cloudflare AI credentials'));
+
+  const accountId = await p.text({
+    message: 'Cloudflare Account ID:',
+    placeholder: 'your-account-id',
+    validate: (v) => (v.trim() ? undefined : 'Account ID is required')
+  });
+
+  if (p.isCancel(accountId)) {
+    p.outro(frappe.subtext1('Cancelled'));
+    process.exit(0);
+  }
+
+  const apiToken = await p.password({
+    message: 'Cloudflare API Token:',
+    validate: (v) => (v.trim() ? undefined : 'API Token is required')
+  });
+
+  if (p.isCancel(apiToken)) {
+    p.outro(frappe.subtext1('Cancelled'));
+    process.exit(0);
+  }
+
+  const s = p.spinner();
+  s.start('Storing secrets...');
+
+  try {
+    await setSecret('AIC_CLOUDFLARE_ACCOUNT_ID', accountId.trim());
+    await setSecret('AIC_CLOUDFLARE_API_TOKEN', apiToken.trim());
+    s.stop(theme.success('Secrets stored securely'));
+    p.outro(theme.success('Setup complete! Run aic to generate commit messages.'));
+  } catch (err) {
+    s.stop(theme.error('Failed to store secrets'));
+    p.log.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 }
 
 // ============================================================================
-// Main Flow
+// Teardown Command - Remove stored secrets
 // ============================================================================
+
+async function teardownSecrets() {
+  showBanner();
+  p.intro(frappe.text('Remove stored credentials'));
+
+  const confirm = await p.confirm({
+    message: 'Remove all stored secrets?'
+  });
+
+  if (p.isCancel(confirm) || !confirm) {
+    p.outro(frappe.subtext1('Cancelled'));
+    process.exit(0);
+  }
+
+  const s = p.spinner();
+  s.start('Removing secrets...');
+
+  try {
+    const results = await Promise.all([
+      deleteSecret('AIC_CLOUDFLARE_ACCOUNT_ID'),
+      deleteSecret('AIC_CLOUDFLARE_API_TOKEN')
+    ]);
+
+    const removed = results.filter(Boolean).length;
+    s.stop(theme.success(`Removed ${removed} secret(s)`));
+    p.outro(frappe.subtext1('Done'));
+  } catch (err) {
+    s.stop(theme.error('Failed to remove secrets'));
+    p.log.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+// ============================================================================
+// Handle Subcommands
+// ============================================================================
+
+if (command === 'setup') {
+  setupSecrets();
+} else if (command === 'teardown') {
+  teardownSecrets();
+} else {
+  // Parse model flag for main command
+  const modelIndex = args.indexOf('--model');
+  const model: ModelType = modelIndex !== -1 ? (args[modelIndex + 1] as ModelType) : 'cloudflare';
+
+  if (model !== 'cloudflare' && model !== 'claude') {
+    console.error('Invalid --model. Use "cloudflare" (default) or "claude"');
+    process.exit(1);
+  }
+
+  // ============================================================================
+  // Main Flow
+  // ============================================================================
 
 async function main() {
   // Show banner
@@ -282,8 +376,9 @@ async function main() {
   }
 }
 
-// Run
-main().catch((err) => {
-  console.error(theme.error(err instanceof Error ? err.message : String(err)));
-  process.exit(1);
-});
+  // Run
+  main().catch((err) => {
+    console.error(theme.error(err instanceof Error ? err.message : String(err)));
+    process.exit(1);
+  });
+}
