@@ -1,6 +1,9 @@
 import type { GenerateResult, SemanticInfo } from '../types.js';
 import { formatSemantics } from './semantic.js';
 
+// Service name for Bun.secrets (UTI format as recommended by Bun docs)
+const SECRETS_SERVICE = 'com.aicommit.cli';
+
 // Commit type definitions
 const COMMIT_TYPES: Record<string, string> = {
   build: 'Build system or external dependency changes',
@@ -17,7 +20,11 @@ const COMMIT_TYPES: Record<string, string> = {
 };
 
 /**
- * Get secret from environment or macOS Keychain
+ * Get secret from environment or system credential store
+ * Uses Bun.secrets for cross-platform support:
+ * - macOS: Keychain
+ * - Linux: libsecret (GNOME Keyring, KWallet)
+ * - Windows: Credential Manager
  */
 async function getSecret(key: string): Promise<string | null> {
   // 1. Check environment variable first
@@ -26,24 +33,47 @@ async function getSecret(key: string): Promise<string | null> {
     return envValue;
   }
 
-  // 2. Try macOS Keychain if on darwin
-  if (process.platform === 'darwin') {
-    try {
-      const proc = Bun.spawn({
-        cmd: ['security', 'find-generic-password', '-a', process.env.USER ?? '', '-s', key, '-w'],
-        stderr: 'pipe',
-        stdout: 'pipe'
-      });
-      const exitCode = await proc.exited;
-      if (exitCode === 0) {
-        return (await new Response(proc.stdout).text()).trim();
-      }
-    } catch {
-      // Keychain lookup failed
-    }
+  // 2. Try system credential store via Bun.secrets
+  try {
+    const value = await Bun.secrets.get({
+      service: SECRETS_SERVICE,
+      name: key
+    });
+    return value;
+  } catch {
+    // Credential store lookup failed
+    return null;
   }
+}
 
-  return null;
+/**
+ * Store secret in system credential store
+ * Uses Bun.secrets for cross-platform support
+ */
+export async function setSecret(key: string, value: string): Promise<void> {
+  await Bun.secrets.set({
+    service: SECRETS_SERVICE,
+    name: key,
+    value
+  });
+}
+
+/**
+ * Delete secret from system credential store
+ * Returns true if deleted, false if not found
+ */
+export async function deleteSecret(key: string): Promise<boolean> {
+  return await Bun.secrets.delete({
+    service: SECRETS_SERVICE,
+    name: key
+  });
+}
+
+/**
+ * Get the secrets service name (for external tools)
+ */
+export function getSecretsService(): string {
+  return SECRETS_SERVICE;
 }
 
 /**
