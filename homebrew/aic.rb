@@ -20,15 +20,15 @@ class Aic < Formula
   end
 
   on_linux do
+    # Linux requires libsecret for credential storage (Bun.secrets API)
+    depends_on "libsecret"
+
     if Hardware::CPU.arm?
       url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-linux-arm64.tar.gz"
       sha256 "PLACEHOLDER_LINUX_ARM64_SHA256"
     else
       url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-linux-x64.tar.gz"
       sha256 "PLACEHOLDER_LINUX_X64_SHA256"
-
-      # Linux requires libsecret for credential storage
-      depends_on "libsecret"
     end
   end
 
@@ -56,6 +56,11 @@ class Aic < Formula
       Or set environment variables:
         export AIC_CLOUDFLARE_ACCOUNT_ID=your-account-id
         export AIC_CLOUDFLARE_API_TOKEN=your-api-token
+
+      Commands:
+        aic                          Generate commit message
+        aic release <patch|minor|major>  Create a release with changelog
+        aic release-init             Initialize release configuration
     EOS
   end
 
