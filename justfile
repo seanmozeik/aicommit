@@ -1,13 +1,13 @@
 default:
     @just --list
 
-# Store .env secrets to system credential store (cross-platform)
+# Setup credentials (interactive)
 setup:
-    bun run scripts/setup-secrets.ts
+    bun run src/index.ts setup
 
-# Remove secrets from system credential store (cross-platform)
+# Remove stored credentials
 teardown:
-    bun run scripts/teardown-secrets.ts
+    bun run src/index.ts teardown
 
 # Run in development
 dev:
