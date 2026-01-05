@@ -1,0 +1,13 @@
+# AICommit Release Configuration
+# Commands run during release process
+
+[release]
+# Build the project
+bun run build
+
+# Run tests (uncomment if you have tests)
+# bun test
+
+[publish]
+# Optional: publish to npm
+# npm publish

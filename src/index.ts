@@ -25,8 +25,9 @@ import {
   push,
   stageFiles
 } from './lib/git.js';
+import { initRelease, interactiveRelease } from './lib/release.js';
 import { extractSemantics, formatStats } from './lib/semantic.js';
-import type { ModelType } from './types.js';
+import type { ModelType, ReleaseType } from './types.js';
 // UI components
 import { showBanner } from './ui/banner.js';
 import { displayCommitMessage, displayContextPanel } from './ui/context-panel.js';
@@ -127,6 +128,27 @@ if (command === 'setup') {
   setupSecrets();
 } else if (command === 'teardown') {
   teardownSecrets();
+} else if (command === 'release') {
+  // aic release [patch|minor|major]
+  const releaseType = args[1] as ReleaseType | undefined;
+  if (!releaseType || !['patch', 'minor', 'major'].includes(releaseType)) {
+    showBanner();
+    console.log('Usage: aic release <patch|minor|major>');
+    console.log('');
+    console.log('Examples:');
+    console.log('  aic release patch   # 1.0.0 → 1.0.1');
+    console.log('  aic release minor   # 1.0.0 → 1.1.0');
+    console.log('  aic release major   # 1.0.0 → 2.0.0');
+    console.log('');
+    console.log('Run "aic release init" to set up release configuration');
+    process.exit(1);
+  }
+  showBanner();
+  interactiveRelease(releaseType);
+} else if (command === 'release-init') {
+  // aic release-init - Initialize release configuration
+  showBanner();
+  initRelease();
 } else {
   // Parse model flag for main command
   const modelIndex = args.indexOf('--model');
