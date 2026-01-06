@@ -127,3 +127,102 @@ export function parseStatusOutput(statusOutput: string): Array<{
       };
     });
 }
+
+/**
+ * Create a git tag
+ */
+export async function createTag(tag: string, message?: string): Promise<void> {
+  if (message) {
+    await $`git tag -a ${tag} -m ${message}`.quiet();
+  } else {
+    await $`git tag ${tag}`.quiet();
+  }
+}
+
+/**
+ * Delete a git tag (local only)
+ */
+export async function deleteTag(tag: string): Promise<void> {
+  await $`git tag -d ${tag}`.quiet();
+}
+
+/**
+ * Check if a tag exists
+ */
+export async function tagExists(tag: string): Promise<boolean> {
+  try {
+    const output = await $`git tag -l ${tag}`.text();
+    return output.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get the latest tag
+ */
+export async function getLatestTag(): Promise<string | null> {
+  try {
+    const output = await $`git describe --tags --abbrev=0`.text();
+    return output.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get all tags sorted by version
+ */
+export async function getAllTags(): Promise<string[]> {
+  try {
+    const output = await $`git tag --sort=-v:refname`.text();
+    return output.trim().split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Push to remote including tags
+ */
+export async function pushWithTags(): Promise<void> {
+  await $`git push --follow-tags`.quiet();
+}
+
+/**
+ * Push tags only
+ */
+export async function pushTags(): Promise<void> {
+  await $`git push --tags`.quiet();
+}
+
+/**
+ * Get commits since a tag/ref
+ */
+export async function getCommitsSince(ref: string): Promise<string> {
+  try {
+    return await $`git log ${ref}..HEAD --oneline`.text();
+  } catch {
+    // If ref doesn't exist, return all commits
+    return await $`git log --oneline`.text();
+  }
+}
+
+/**
+ * Get diff since a tag/ref
+ */
+export async function getDiffSince(ref: string): Promise<string> {
+  try {
+    return await $`git diff ${ref}..HEAD --diff-algorithm=minimal`.text();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Check if working directory is clean
+ */
+export async function isClean(): Promise<boolean> {
+  const status = await getStatus();
+  return status.length === 0;
+}

@@ -121,3 +121,11 @@ update-formula version:
 # Install dependencies
 install:
     bun install
+
+# Release a new version (patch|minor|major)
+release type="patch":
+    bun run src/index.ts release {{type}}
+
+# Initialize release configuration
+release-init:
+    bun run src/index.ts release-init
