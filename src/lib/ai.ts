@@ -36,8 +36,8 @@ async function getSecret(key: string): Promise<string | null> {
   // 2. Try system credential store via Bun.secrets
   try {
     const value = await Bun.secrets.get({
-      service: SECRETS_SERVICE,
-      name: key
+      name: key,
+      service: SECRETS_SERVICE
     });
     return value;
   } catch {
@@ -53,8 +53,8 @@ async function getSecret(key: string): Promise<string | null> {
 export async function setSecret(key: string, value: string): Promise<void> {
   try {
     await Bun.secrets.set({
-      service: SECRETS_SERVICE,
       name: key,
+      service: SECRETS_SERVICE,
       value
     });
   } catch (err) {
@@ -78,8 +78,8 @@ export async function setSecret(key: string, value: string): Promise<void> {
  */
 export async function deleteSecret(key: string): Promise<boolean> {
   return await Bun.secrets.delete({
-    service: SECRETS_SERVICE,
-    name: key
+    name: key,
+    service: SECRETS_SERVICE
   });
 }
 

@@ -1,8 +1,8 @@
 import * as p from '@clack/prompts';
-import type { AicConfig, ProjectInfo, ReleaseType } from '../types.js';
+import type { ReleaseType } from '../types.js';
+import { theme } from '../ui/theme.js';
 import { executeSection, hasAicConfig, initAicConfig, parseAicConfig } from './aic-script.js';
 import {
-  changelogExists,
   detectChangelogConvention,
   formatChangelogEntry,
   generateChangelog,
@@ -13,14 +13,12 @@ import {
   commit,
   createTag,
   getLatestTag,
-  isClean,
   isGitRepo,
   pushWithTags,
   stageFiles,
   tagExists
 } from './git.js';
 import { bumpVersion, detectProject, updateProjectVersion } from './project.js';
-import { theme } from '../ui/theme.js';
 
 export interface ReleaseOptions {
   type: ReleaseType;
@@ -45,16 +43,16 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
 
   // Pre-flight checks
   if (!(await isGitRepo())) {
-    return { success: false, error: 'Not a git repository' };
+    return { error: 'Not a git repository', success: false };
   }
 
   // Detect project
   const project = await detectProject();
   if (!project) {
     return {
-      success: false,
       error:
-        'Could not detect project type. No package.json, pyproject.toml, Cargo.toml, etc. found.'
+        'Could not detect project type. No package.json, pyproject.toml, Cargo.toml, etc. found.',
+      success: false
     };
   }
 
@@ -65,15 +63,15 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
   // Check if tag already exists
   if (await tagExists(tagName)) {
     return {
-      success: false,
-      error: `Tag ${tagName} already exists. Delete it first with: git tag -d ${tagName}`
+      error: `Tag ${tagName} already exists. Delete it first with: git tag -d ${tagName}`,
+      success: false
     };
   }
 
   return {
     success: true,
-    version: newVersion,
-    tag: tagName
+    tag: tagName,
+    version: newVersion
   };
 }
 
@@ -137,6 +135,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
 
     const scriptSuccess = await executeSection('release', aicConfig!, {
       onCommand: (cmd) => p.log.info(`  $ ${cmd}`),
+      onError: (error) => p.log.error(`    ${error}`),
       onOutput: (output) => {
         // Show truncated output
         const lines = output.split('\n');
@@ -146,8 +145,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
           lines.slice(0, 3).forEach((l) => p.log.message(`    ${l}`));
           p.log.message(`    ... (${lines.length - 3} more lines)`);
         }
-      },
-      onError: (error) => p.log.error(`    ${error}`)
+      }
     });
 
     if (!scriptSuccess) {
@@ -274,8 +272,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
       p.log.step('Running publish scripts...');
       await executeSection('publish', aicConfig, {
         onCommand: (cmd) => p.log.info(`  $ ${cmd}`),
-        onOutput: (output) => p.log.message(`    ${output.split('\n')[0]}`),
-        onError: (error) => p.log.error(`    ${error}`)
+        onError: (error) => p.log.error(`    ${error}`),
+        onOutput: (output) => p.log.message(`    ${output.split('\n')[0]}`)
       });
     }
   }

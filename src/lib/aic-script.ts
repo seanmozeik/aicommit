@@ -1,4 +1,3 @@
-import { $ } from 'bun';
 import type { AicConfig } from '../types.js';
 
 const AIC_CONFIG_PATH = '.aic';
@@ -53,7 +52,7 @@ export function parseAicContent(content: string): AicConfig {
 
     // Add command to current section
     if (currentSection && config[currentSection]) {
-      config[currentSection]!.push(trimmed);
+      config[currentSection]?.push(trimmed);
     }
   }
 
@@ -96,8 +95,8 @@ export async function executeSection(
       // Use shell to execute the command (supports pipes, redirects, etc.)
       const proc = Bun.spawn({
         cmd: ['sh', '-c', cmd],
-        stdout: 'pipe',
-        stderr: 'pipe'
+        stderr: 'pipe',
+        stdout: 'pipe'
       });
 
       const [stdout, stderr] = await Promise.all([
@@ -136,6 +135,31 @@ export async function executeSection(
  */
 export function getDefaultAicTemplate(projectType: string): string {
   const templates: Record<string, string> = {
+    default: `# AICommit Release Configuration
+# Commands run during release process
+
+[release]
+# Add your build commands here
+# Example: npm run build
+
+[publish]
+# Add your publish commands here
+# Example: npm publish
+`,
+    go: `# AICommit Release Configuration
+# Commands run during release process
+
+[release]
+# Build the project
+go build -o dist/
+
+# Run tests
+go test ./...
+
+[publish]
+# Go modules are published via git tags
+# No additional publish step needed
+`,
     node: `# AICommit Release Configuration
 # Commands run during release process
 
@@ -177,31 +201,6 @@ cargo test
 [publish]
 # Optional: publish to crates.io
 # cargo publish
-`,
-    go: `# AICommit Release Configuration
-# Commands run during release process
-
-[release]
-# Build the project
-go build -o dist/
-
-# Run tests
-go test ./...
-
-[publish]
-# Go modules are published via git tags
-# No additional publish step needed
-`,
-    default: `# AICommit Release Configuration
-# Commands run during release process
-
-[release]
-# Add your build commands here
-# Example: npm run build
-
-[publish]
-# Add your publish commands here
-# Example: npm publish
 `
   };
 
