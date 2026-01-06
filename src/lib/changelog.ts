@@ -103,9 +103,7 @@ function buildChangelogPrompt(
   diffStats: string,
   semantics: SemanticInfo
 ): string {
-  const commitList = commits
-    .map((c) => `- ${c.message}`)
-    .join('\n');
+  const commitList = commits.map((c) => `- ${c.message}`).join('\n');
 
   const sections: string[] = [
     `Generate a user-friendly changelog for version ${newVersion}.`,

@@ -51,7 +51,11 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
   // Detect project
   const project = await detectProject();
   if (!project) {
-    return { success: false, error: 'Could not detect project type. No package.json, pyproject.toml, Cargo.toml, etc. found.' };
+    return {
+      success: false,
+      error:
+        'Could not detect project type. No package.json, pyproject.toml, Cargo.toml, etc. found.'
+    };
   }
 
   // Calculate new version
@@ -60,7 +64,10 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
 
   // Check if tag already exists
   if (await tagExists(tagName)) {
-    return { success: false, error: `Tag ${tagName} already exists. Delete it first with: git tag -d ${tagName}` };
+    return {
+      success: false,
+      error: `Tag ${tagName} already exists. Delete it first with: git tag -d ${tagName}`
+    };
   }
 
   return {
@@ -87,7 +94,9 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
   const project = await detectProject();
   if (!project) {
     s.stop(theme.error('Project detection failed'));
-    p.log.error('Could not detect project type. Supported: package.json, pyproject.toml, Cargo.toml, mix.exs, go.mod');
+    p.log.error(
+      'Could not detect project type. Supported: package.json, pyproject.toml, Cargo.toml, mix.exs, go.mod'
+    );
     process.exit(1);
   }
 
