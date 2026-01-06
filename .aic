@@ -1,13 +1,29 @@
 # AICommit Release Configuration
-# Commands run during release process
 
 [release]
-# Build the project
-bun run build
+# Clean and create dist directory
+rm -rf dist && mkdir -p dist
 
-# Run tests (uncomment if you have tests)
-# bun test
+# Build for all platforms
+bun build ./src/index.ts --compile --target=bun-darwin-arm64 --outfile dist/aic-darwin-arm64 --minify
+bun build ./src/index.ts --compile --target=bun-darwin-x64 --outfile dist/aic-darwin-x64 --minify
+bun build ./src/index.ts --compile --target=bun-linux-x64 --outfile dist/aic-linux-x64 --minify
+bun build ./src/index.ts --compile --target=bun-linux-arm64 --outfile dist/aic-linux-arm64 --minify
+bun build ./src/index.ts --compile --target=bun-windows-x64 --outfile dist/aic-windows-x64.exe --minify
+
+# Clean up bun build artifacts
+rm -f ./.*bun-build
+
+# Create tar.gz archives for Unix platforms
+cd dist && for f in aic-darwin-* aic-linux-*; do [ -f "$f" ] && tar -czvf "${f}.tar.gz" "$f" && rm "$f"; done
+
+# Create zip for Windows
+cd dist && [ -f "aic-windows-x64.exe" ] && zip aic-windows-x64.zip aic-windows-x64.exe && rm aic-windows-x64.exe
+
+# Generate checksums
+cd dist && shasum -a 256 *.tar.gz *.zip > checksums.txt && cat checksums.txt
 
 [publish]
-# Optional: publish to npm
-# npm publish
+# Extract latest changelog entry and create GitHub release with binaries
+awk '/^## \[/{count++} count==1' CHANGELOG.md | tail -n +2 > /tmp/release-notes.md
+gh release create "v$(node -p "require('./package.json').version")" dist/*.tar.gz dist/*.zip dist/checksums.txt --title "v$(node -p "require('./package.json').version")" --notes-file /tmp/release-notes.md
