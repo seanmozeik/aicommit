@@ -51,11 +51,25 @@ async function getSecret(key: string): Promise<string | null> {
  * Uses Bun.secrets for cross-platform support
  */
 export async function setSecret(key: string, value: string): Promise<void> {
-  await Bun.secrets.set({
-    service: SECRETS_SERVICE,
-    name: key,
-    value
-  });
+  try {
+    await Bun.secrets.set({
+      service: SECRETS_SERVICE,
+      name: key,
+      value
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (process.platform === 'linux' && msg.includes('libsecret')) {
+      throw new Error(
+        'libsecret not found. Install it with:\n' +
+          '  Ubuntu/Debian: sudo apt install libsecret-1-0\n' +
+          '  Fedora/RHEL:   sudo dnf install libsecret\n' +
+          '  Arch:          sudo pacman -S libsecret\n' +
+          'Or use environment variables instead.'
+      );
+    }
+    throw err;
+  }
 }
 
 /**
@@ -84,7 +98,11 @@ export async function generateWithCloudflare(prompt: string): Promise<GenerateRe
   const apiToken = await getSecret('AIC_CLOUDFLARE_API_TOKEN');
 
   if (!accountId || !apiToken) {
-    throw new Error('Missing secrets in keychain. Run "just setup" with a .env file first.');
+    throw new Error(
+      'Cloudflare credentials not found. Either:\n' +
+        '  1. Run: aic setup\n' +
+        '  2. Set environment variables: AIC_CLOUDFLARE_ACCOUNT_ID, AIC_CLOUDFLARE_API_TOKEN'
+    );
   }
 
   const response = await fetch(
