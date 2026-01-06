@@ -8,8 +8,45 @@ interface MetadataHandler {
 }
 
 const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
+  elixir: {
+    detect: (content) => {
+      const versionMatch = content.match(/version:\s*["']([^"']+)["']/);
+      const appMatch = content.match(/app:\s*:(\w+)/);
+      if (versionMatch) {
+        return {
+          name: appMatch?.[1] || 'unknown',
+          version: versionMatch[1]
+        };
+      }
+      return null;
+    },
+    files: ['mix.exs'],
+    updateVersion: (content, newVersion) => {
+      return content.replace(/(version:\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
+    }
+  },
+  go: {
+    detect: (content) => {
+      // go.mod module path
+      const moduleMatch = content.match(/module\s+([^\s]+)/);
+      // version.go with const Version = "x.y.z"
+      const versionMatch = content.match(/(?:Version|VERSION)\s*=\s*["']([^"']+)["']/);
+      if (moduleMatch) {
+        // Go modules don't have version in go.mod, check for version.go
+        return {
+          name: moduleMatch[1].split('/').pop() || 'unknown',
+          version: versionMatch?.[1] || '0.0.0'
+        };
+      }
+      return null;
+    },
+    files: ['go.mod', 'version.go'],
+    updateVersion: (content, newVersion) => {
+      // Update version.go style constants
+      return content.replace(/((?:Version|VERSION)\s*=\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
+    }
+  },
   node: {
-    files: ['package.json'],
     detect: (content) => {
       try {
         const pkg = JSON.parse(content);
@@ -19,14 +56,14 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
       } catch {}
       return null;
     },
+    files: ['package.json'],
     updateVersion: (content, newVersion) => {
       const pkg = JSON.parse(content);
       pkg.version = newVersion;
-      return JSON.stringify(pkg, null, 2) + '\n';
+      return `${JSON.stringify(pkg, null, 2)}\n`;
     }
   },
   python: {
-    files: ['pyproject.toml', 'setup.py', '__version__.py'],
     detect: (content) => {
       // pyproject.toml with [project] section
       const projectMatch = content.match(/\[project\]\s*[\s\S]*?name\s*=\s*["']([^"']+)["']/);
@@ -44,6 +81,7 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
       }
       return null;
     },
+    files: ['pyproject.toml', 'setup.py', '__version__.py'],
     updateVersion: (content, newVersion) => {
       // Handle pyproject.toml version = "x.y.z"
       if (content.includes('[project]') || content.includes('[tool.poetry]')) {
@@ -57,7 +95,6 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
     }
   },
   rust: {
-    files: ['Cargo.toml'],
     detect: (content) => {
       const nameMatch = content.match(/\[package\][\s\S]*?name\s*=\s*["']([^"']+)["']/);
       const versionMatch = content.match(/\[package\][\s\S]*?version\s*=\s*["']([^"']+)["']/);
@@ -69,6 +106,7 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
       }
       return null;
     },
+    files: ['Cargo.toml'],
     updateVersion: (content, newVersion) => {
       // Only update version in [package] section
       const packageSection = content.match(
@@ -83,47 +121,9 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
       return content;
     }
   },
-  go: {
-    files: ['go.mod', 'version.go'],
-    detect: (content) => {
-      // go.mod module path
-      const moduleMatch = content.match(/module\s+([^\s]+)/);
-      // version.go with const Version = "x.y.z"
-      const versionMatch = content.match(/(?:Version|VERSION)\s*=\s*["']([^"']+)["']/);
-      if (moduleMatch) {
-        // Go modules don't have version in go.mod, check for version.go
-        return {
-          name: moduleMatch[1].split('/').pop() || 'unknown',
-          version: versionMatch?.[1] || '0.0.0'
-        };
-      }
-      return null;
-    },
-    updateVersion: (content, newVersion) => {
-      // Update version.go style constants
-      return content.replace(/((?:Version|VERSION)\s*=\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
-    }
-  },
-  elixir: {
-    files: ['mix.exs'],
-    detect: (content) => {
-      const versionMatch = content.match(/version:\s*["']([^"']+)["']/);
-      const appMatch = content.match(/app:\s*:(\w+)/);
-      if (versionMatch) {
-        return {
-          name: appMatch?.[1] || 'unknown',
-          version: versionMatch[1]
-        };
-      }
-      return null;
-    },
-    updateVersion: (content, newVersion) => {
-      return content.replace(/(version:\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
-    }
-  },
   unknown: {
-    files: [],
     detect: () => null,
+    files: [],
     updateVersion: (content) => content
   }
 };
@@ -143,10 +143,10 @@ export async function detectProject(): Promise<ProjectInfo | null> {
         const info = handler.detect(content);
         if (info) {
           return {
-            type,
+            metadataFiles: [filename],
             name: info.name,
-            version: info.version,
-            metadataFiles: [filename]
+            type,
+            version: info.version
           };
         }
       }

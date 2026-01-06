@@ -1,5 +1,5 @@
 import { $ } from 'bun';
-import type { ChangelogEntry, CommitInfo, GenerateResult, SemanticInfo } from '../types.js';
+import type { ChangelogEntry, CommitInfo, SemanticInfo } from '../types.js';
 import { generateWithCloudflare } from './ai.js';
 import { classifyFiles, parseUnifiedDiff } from './diff-parser.js';
 import { extractSemantics } from './semantic.js';
@@ -46,11 +46,11 @@ function parseCommits(output: string): CommitInfo[] {
 
       if (match) {
         return {
+          description: match[3],
           hash,
           message,
-          type: match[1],
           scope: match[2] || undefined,
-          description: match[3]
+          type: match[1]
         };
       }
 
@@ -86,7 +86,7 @@ export async function getDiffSince(fromRef: string): Promise<string> {
 export async function extractChangeSemantics(fromRef: string): Promise<SemanticInfo> {
   const diffOutput = await getDiffSince(fromRef);
   if (!diffOutput.trim()) {
-    return { functions: [], types: [], classes: [], exports: [] };
+    return { classes: [], exports: [], functions: [], types: [] };
   }
 
   const parsed = parseUnifiedDiff(diffOutput);
@@ -247,7 +247,7 @@ export async function readChangelog(): Promise<string> {
  * Write/update the changelog with a new entry
  */
 export async function writeChangelog(newEntry: string): Promise<void> {
-  let existingContent = await readChangelog();
+  const existingContent = await readChangelog();
 
   // Find where to insert the new entry (after the header)
   const headerEndMatch = existingContent.match(/^# Changelog[\s\S]*?\n\n/);
@@ -298,12 +298,12 @@ export function parseChangelog(content: string): ChangelogEntry[] {
     const sectionContent = sections[index + 1] || '';
 
     const entry: ChangelogEntry = {
-      version,
-      date,
       added: extractSection(sectionContent, 'Added'),
       changed: extractSection(sectionContent, 'Changed'),
+      date,
       fixed: extractSection(sectionContent, 'Fixed'),
-      removed: extractSection(sectionContent, 'Removed')
+      removed: extractSection(sectionContent, 'Removed'),
+      version
     };
 
     entries.push(entry);
