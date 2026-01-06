@@ -47,17 +47,11 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
     updateVersion: (content, newVersion) => {
       // Handle pyproject.toml version = "x.y.z"
       if (content.includes('[project]') || content.includes('[tool.poetry]')) {
-        return content.replace(
-          /(version\s*=\s*["'])([^"']+)(["'])/,
-          `$1${newVersion}$3`
-        );
+        return content.replace(/(version\s*=\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
       }
       // Handle __version__ = "x.y.z"
       if (content.includes('__version__')) {
-        return content.replace(
-          /(__version__\s*=\s*["'])([^"']+)(["'])/,
-          `$1${newVersion}$3`
-        );
+        return content.replace(/(__version__\s*=\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
       }
       return content;
     }
@@ -77,7 +71,9 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
     },
     updateVersion: (content, newVersion) => {
       // Only update version in [package] section
-      const packageSection = content.match(/(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/);
+      const packageSection = content.match(
+        /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/
+      );
       if (packageSection) {
         return content.replace(
           /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/,
@@ -105,10 +101,7 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
     },
     updateVersion: (content, newVersion) => {
       // Update version.go style constants
-      return content.replace(
-        /((?:Version|VERSION)\s*=\s*["'])([^"']+)(["'])/,
-        `$1${newVersion}$3`
-      );
+      return content.replace(/((?:Version|VERSION)\s*=\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
     }
   },
   elixir: {
@@ -125,10 +118,7 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
       return null;
     },
     updateVersion: (content, newVersion) => {
-      return content.replace(
-        /(version:\s*["'])([^"']+)(["'])/,
-        `$1${newVersion}$3`
-      );
+      return content.replace(/(version:\s*["'])([^"']+)(["'])/, `$1${newVersion}$3`);
     }
   },
   unknown: {
