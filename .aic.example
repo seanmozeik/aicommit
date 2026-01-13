@@ -64,12 +64,11 @@ bun run build
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Example: Create GitHub release with binaries
-# awk '/^## \[/{count++} count==1' CHANGELOG.md | tail -n +2 > /tmp/release-notes.md
 # gh release create "v$(bun -p "require('./package.json').version")" \
 #   dist/*.tar.gz \
 #   dist/checksums.txt \
 #   --title "v$(bun -p "require('./package.json').version")" \
-#   --notes-file /tmp/release-notes.md
+#   --notes "$(aic changelog-latest)"
 
 # Example: Publish to npm
 # npm publish

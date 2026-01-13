@@ -318,6 +318,28 @@ function extractSection(content: string, sectionName: string): string[] {
 }
 
 /**
+ * Get the latest changelog entry content (without version header)
+ * Useful for piping to tools like gh release create
+ */
+export async function getLatestChangelogEntry(): Promise<string | null> {
+  const content = await readChangelog();
+
+  // Find first version header
+  const firstMatch = content.match(/^## \[[^\]]+\]/m);
+  if (!firstMatch?.index) return null;
+
+  // Get content after header line
+  const afterHeader = content.slice(firstMatch.index + firstMatch[0].length);
+  const startOfContent = afterHeader.indexOf('\n') + 1;
+
+  // Find next version header or end
+  const nextMatch = afterHeader.slice(startOfContent).match(/^## \[/m);
+  const endIndex = nextMatch?.index ?? afterHeader.length;
+
+  return afterHeader.slice(startOfContent, startOfContent + endIndex).trim();
+}
+
+/**
  * Detect if existing changelog follows a different convention and needs migration
  */
 export async function detectChangelogConvention(): Promise<'keepachangelog' | 'other' | 'none'> {

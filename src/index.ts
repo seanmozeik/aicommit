@@ -157,6 +157,16 @@ if (command === 'setup') {
   // aic release-init - Initialize release configuration
   showBanner();
   initRelease();
+} else if (command === 'changelog-latest') {
+  // Output latest changelog entry to stdout (for use in scripts)
+  const { getLatestChangelogEntry } = await import('./lib/changelog.js');
+  const entry = await getLatestChangelogEntry();
+  if (entry) {
+    console.log(entry);
+  } else {
+    console.error('No changelog entries found');
+    process.exit(1);
+  }
 } else {
   // Parse model flag for main command
   const modelIndex = args.indexOf('--model');
