@@ -1,7 +1,12 @@
 import * as p from '@clack/prompts';
 import type { ReleaseType } from '../types.js';
 import { theme } from '../ui/theme.js';
-import { executeSection, hasAicConfig, initAicConfig, parseAicConfig } from './aic-script.js';
+import {
+  executeSectionWithProgress,
+  hasAicConfig,
+  initAicConfig,
+  parseAicConfig
+} from './aic-script.js';
 import {
   detectChangelogConvention,
   formatChangelogEntry,
@@ -20,6 +25,13 @@ import {
 } from './git.js';
 import { bumpVersion, detectProject, updateProjectVersion } from './project.js';
 
+/**
+ * Extract error message from unknown error type
+ */
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export interface ReleaseOptions {
   type: ReleaseType;
   skipChangelog?: boolean;
@@ -36,17 +48,16 @@ export interface ReleaseResult {
 }
 
 /**
- * Execute the full release flow
+ * Validate release prerequisites and calculate new version
+ * Does not execute the release - use interactiveRelease for that
  */
 export async function executeRelease(options: ReleaseOptions): Promise<ReleaseResult> {
-  const { type, skipChangelog, skipScripts, dryRun, push } = options;
+  const { type } = options;
 
-  // Pre-flight checks
   if (!(await isGitRepo())) {
     return { error: 'Not a git repository', success: false };
   }
 
-  // Detect project
   const project = await detectProject();
   if (!project) {
     return {
@@ -56,11 +67,9 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
     };
   }
 
-  // Calculate new version
   const newVersion = bumpVersion(project.version, type);
   const tagName = `v${newVersion}`;
 
-  // Check if tag already exists
   if (await tagExists(tagName)) {
     return {
       error: `Tag ${tagName} already exists. Delete it first with: git tag -d ${tagName}`,
@@ -125,28 +134,24 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     process.exit(0);
   }
 
+  // Update version in project files BEFORE running build scripts
+  // so binaries have the correct version embedded
+  s.start('Updating version...');
+  try {
+    await updateProjectVersion(project, newVersion);
+    s.stop(theme.success(`Updated ${project.metadataFiles.join(', ')} to v${newVersion}`));
+  } catch (err) {
+    s.stop(theme.error('Version update failed'));
+    p.log.error(getErrorMessage(err));
+    process.exit(1);
+  }
+
   // Check for .aic config
   const aicConfig = await parseAicConfig();
-  const hasReleaseScripts = aicConfig?.release && aicConfig.release.length > 0;
 
-  // Run pre-release scripts if configured
-  if (hasReleaseScripts) {
-    p.log.step('Running release scripts...');
-
-    const scriptSuccess = await executeSection('release', aicConfig!, {
-      onCommand: (cmd) => p.log.info(`  $ ${cmd}`),
-      onError: (error) => p.log.error(`    ${error}`),
-      onOutput: (output) => {
-        // Show truncated output
-        const lines = output.split('\n');
-        if (lines.length <= 5) {
-          lines.forEach((l) => p.log.message(`    ${l}`));
-        } else {
-          lines.slice(0, 3).forEach((l) => p.log.message(`    ${l}`));
-          p.log.message(`    ... (${lines.length - 3} more lines)`);
-        }
-      }
-    });
+  // Run release scripts if configured
+  if (aicConfig?.release && aicConfig.release.length > 0) {
+    const scriptSuccess = await executeSectionWithProgress('release', aicConfig, s);
 
     if (!scriptSuccess) {
       p.log.error('Release scripts failed');
@@ -195,7 +200,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     p.log.message('');
   } catch (err) {
     s.stop(theme.warning('Changelog generation failed'));
-    p.log.warn(err instanceof Error ? err.message : String(err));
+    p.log.warn(getErrorMessage(err));
 
     const continueWithout = await p.confirm({
       message: 'Continue without changelog?'
@@ -204,17 +209,6 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     if (p.isCancel(continueWithout) || !continueWithout) {
       process.exit(1);
     }
-  }
-
-  // Update version in project files
-  s.start('Updating version...');
-  try {
-    await updateProjectVersion(project, newVersion);
-    s.stop(theme.success(`Updated ${project.metadataFiles.join(', ')}`));
-  } catch (err) {
-    s.stop(theme.error('Version update failed'));
-    p.log.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
   }
 
   // Stage and commit
@@ -226,7 +220,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     s.stop(theme.success('Committed release'));
   } catch (err) {
     s.stop(theme.error('Commit failed'));
-    p.log.error(err instanceof Error ? err.message : String(err));
+    p.log.error(getErrorMessage(err));
     process.exit(1);
   }
 
@@ -237,7 +231,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     s.stop(theme.success(`Tagged ${tagName}`));
   } catch (err) {
     s.stop(theme.error('Tag creation failed'));
-    p.log.error(err instanceof Error ? err.message : String(err));
+    p.log.error(getErrorMessage(err));
     process.exit(1);
   }
 
@@ -257,7 +251,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     s.stop(theme.success('Pushed to remote'));
   } catch (err) {
     s.stop(theme.error('Push failed'));
-    p.log.error(err instanceof Error ? err.message : String(err));
+    p.log.error(getErrorMessage(err));
     p.outro(theme.warning(`Released ${tagName} locally. Push manually: git push --follow-tags`));
     process.exit(1);
   }
@@ -269,12 +263,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     });
 
     if (!p.isCancel(runPublish) && runPublish) {
-      p.log.step('Running publish scripts...');
-      await executeSection('publish', aicConfig, {
-        onCommand: (cmd) => p.log.info(`  $ ${cmd}`),
-        onError: (error) => p.log.error(`    ${error}`),
-        onOutput: (output) => p.log.message(`    ${output.split('\n')[0]}`)
-      });
+      await executeSectionWithProgress('publish', aicConfig, s);
     }
   }
 

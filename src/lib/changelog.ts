@@ -107,12 +107,8 @@ function buildChangelogPrompt(
 
   const sections: string[] = [
     `Generate a user-friendly changelog for version ${newVersion}.`,
-    `
-## Commits
-${commitList}`,
-    `
-## File Changes
-${diffStats}`
+    `## Commits\n${commitList}`,
+    `## File Changes\n${diffStats}`
   ];
 
   // Add semantic info if available
@@ -131,13 +127,10 @@ ${diffStats}`
   }
 
   if (semanticParts.length > 0) {
-    sections.push(`
-## Code Changes
-${semanticParts.join('\n')}`);
+    sections.push(`## Code Changes\n${semanticParts.join('\n')}`);
   }
 
-  sections.push(`
-## Instructions
+  sections.push(`## Instructions
 Generate a changelog entry following these rules:
 
 1. Write for END USERS, not developers
@@ -170,7 +163,7 @@ Example output format:
 ### Fixed
 - Fixed issue where app would crash on startup`);
 
-  return sections.join('\n');
+  return sections.join('\n\n');
 }
 
 /**
@@ -248,30 +241,26 @@ export async function readChangelog(): Promise<string> {
  */
 export async function writeChangelog(newEntry: string): Promise<void> {
   const existingContent = await readChangelog();
+  const hasHeader = existingContent.match(/^# Changelog[\s\S]*?\n\n/);
 
-  // Find where to insert the new entry (after the header)
-  const headerEndMatch = existingContent.match(/^# Changelog[\s\S]*?\n\n/);
-  let header: string;
-  let rest: string;
-
-  if (headerEndMatch) {
-    // Find the end of the header section (everything before first ## entry)
-    const firstEntryMatch = existingContent.match(/\n## \[/);
-    if (firstEntryMatch?.index) {
-      header = existingContent.slice(0, firstEntryMatch.index + 1);
-      rest = existingContent.slice(firstEntryMatch.index + 1);
-    } else {
-      header = existingContent;
-      rest = '';
-    }
-  } else {
-    // No proper header, create one
-    header = CHANGELOG_HEADER;
-    rest = existingContent.startsWith('#') ? '' : existingContent;
+  if (!hasHeader) {
+    // No proper header - create one and discard existing content if it starts with #
+    const rest = existingContent.startsWith('#') ? '' : existingContent;
+    await Bun.write(CHANGELOG_PATH, CHANGELOG_HEADER + newEntry + rest);
+    return;
   }
 
-  const newContent = header + newEntry + rest;
-  await Bun.write(CHANGELOG_PATH, newContent);
+  // Find where to insert the new entry (after header, before first version entry)
+  const firstEntryMatch = existingContent.match(/\n## \[/);
+
+  if (firstEntryMatch?.index !== undefined) {
+    const header = existingContent.slice(0, firstEntryMatch.index + 1);
+    const rest = existingContent.slice(firstEntryMatch.index + 1);
+    await Bun.write(CHANGELOG_PATH, header + newEntry + rest);
+  } else {
+    // No existing entries, append after current content
+    await Bun.write(CHANGELOG_PATH, existingContent + newEntry);
+  }
 }
 
 /**
@@ -289,10 +278,10 @@ export function parseChangelog(content: string): ChangelogEntry[] {
   const entryPattern = /## \[([^\]]+)\] - (\d{4}-\d{2}-\d{2})/g;
   const sections = content.split(/## \[[^\]]+\] - \d{4}-\d{2}-\d{2}/);
 
-  let match: RegExpExecArray | null;
+  let match = entryPattern.exec(content);
   let index = 0;
 
-  while ((match = entryPattern.exec(content)) !== null) {
+  while (match !== null) {
     const version = match[1];
     const date = match[2];
     const sectionContent = sections[index + 1] || '';
@@ -308,6 +297,7 @@ export function parseChangelog(content: string): ChangelogEntry[] {
 
     entries.push(entry);
     index++;
+    match = entryPattern.exec(content);
   }
 
   return entries;

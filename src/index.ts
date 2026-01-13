@@ -3,6 +3,7 @@
 import * as p from '@clack/prompts';
 import {
   buildPrompt,
+  COMMIT_TYPES,
   deleteSecret,
   generateWithClaude,
   generateWithCloudflare,
@@ -223,6 +224,27 @@ if (command === 'setup') {
       }
     }
 
+    // Get commit type selection
+    const typeOptions = [
+      { hint: 'Let AI choose the best type', label: 'auto', value: 'auto' },
+      ...Object.entries(COMMIT_TYPES).map(([type, desc]) => ({
+        hint: desc,
+        label: type,
+        value: type
+      }))
+    ];
+
+    const selectedType = await p.select({
+      initialValue: 'auto',
+      message: 'Commit type:',
+      options: typeOptions
+    });
+
+    if (p.isCancel(selectedType)) {
+      p.outro(frappe.subtext1('Cancelled'));
+      process.exit(0);
+    }
+
     // Get user description
     const userInput = await p.text({
       defaultValue: '',
@@ -286,7 +308,8 @@ if (command === 'setup') {
       stats,
       semantics,
       fileList.join('\n'),
-      compressedDiffs
+      compressedDiffs,
+      selectedType as string
     );
 
     // Start AI generation in background immediately (runs while we display panels)

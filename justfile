@@ -51,29 +51,6 @@ build-all: clean-dist
 clean-dist:
     rm -rf dist
 
-# Create release archives
-release: build-all
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd dist
-
-    # Create tarballs for Unix platforms
-    for f in aic-darwin-* aic-linux-*; do
-        [[ -f "$f" ]] || continue
-        tar -czvf "${f}.tar.gz" "$f"
-        rm "$f"
-    done
-
-    # Create zip for Windows
-    if [[ -f "aic-windows-x64.exe" ]]; then
-        zip "aic-windows-x64.zip" "aic-windows-x64.exe"
-        rm "aic-windows-x64.exe"
-    fi
-
-    echo ""
-    echo "✓ Release archives:"
-    ls -lh
-
 # Generate SHA256 checksums for release
 checksums:
     #!/usr/bin/env bash

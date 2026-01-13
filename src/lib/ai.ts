@@ -4,8 +4,11 @@ import { formatSemantics } from './semantic.js';
 // Service name for Bun.secrets (UTI format as recommended by Bun docs)
 const SECRETS_SERVICE = 'com.aicommit.cli';
 
+// In-memory cache to avoid multiple keychain prompts per process
+const secretsCache = new Map<string, string | null>();
+
 // Commit type definitions
-const COMMIT_TYPES: Record<string, string> = {
+export const COMMIT_TYPES: Record<string, string> = {
   build: 'Build system or external dependency changes',
   chore: 'Maintenance tasks, no production code change',
   ci: 'CI/CD configuration changes',
@@ -27,21 +30,28 @@ const COMMIT_TYPES: Record<string, string> = {
  * - Windows: Credential Manager
  */
 async function getSecret(key: string): Promise<string | null> {
-  // 1. Check environment variable first
+  // 1. Check cache first (avoids multiple keychain prompts)
+  if (secretsCache.has(key)) {
+    return secretsCache.get(key) ?? null;
+  }
+
+  // 2. Check environment variable
   const envValue = process.env[key];
   if (envValue) {
     return envValue;
   }
 
-  // 2. Try system credential store via Bun.secrets
+  // 3. Try system credential store via Bun.secrets
   try {
     const value = await Bun.secrets.get({
       name: key,
       service: SECRETS_SERVICE
     });
+    secretsCache.set(key, value);
     return value;
   } catch {
     // Credential store lookup failed
+    secretsCache.set(key, null);
     return null;
   }
 }
@@ -57,6 +67,7 @@ export async function setSecret(key: string, value: string): Promise<void> {
       service: SECRETS_SERVICE,
       value
     });
+    secretsCache.set(key, value);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (process.platform === 'linux' && msg.includes('libsecret')) {
@@ -77,6 +88,7 @@ export async function setSecret(key: string, value: string): Promise<void> {
  * Returns true if deleted, false if not found
  */
 export async function deleteSecret(key: string): Promise<boolean> {
+  secretsCache.delete(key);
   return await Bun.secrets.delete({
     name: key,
     service: SECRETS_SERVICE
@@ -156,9 +168,17 @@ export function buildPrompt(
   stats: string,
   semantics: SemanticInfo,
   fileList: string,
-  compressedDiffs: string
+  compressedDiffs: string,
+  selectedType?: string
 ): string {
   const sections: string[] = ['Generate a conventional commit message.'];
+
+  if (selectedType && selectedType !== 'auto') {
+    const typeDesc = COMMIT_TYPES[selectedType] || '';
+    sections.push(
+      `## User Selection\nThe user indicated this commit is most likely a "${selectedType}" (${typeDesc}).\nUse this type unless absolutely certain another type is more accurate.\nYou can still add a scope in parentheses, e.g., ${selectedType}(scope): description.`
+    );
+  }
 
   if (userInput?.trim()) {
     sections.push(`## User Note\n${userInput.trim()}`);
@@ -194,16 +214,24 @@ IMPORTANT: Reply with ONLY the commit message. No explanations, no preamble, no 
  * Validate and clean up generated commit message
  */
 export function validateMessage(msg: string): string {
-  let cleaned = msg.trim();
-  cleaned = cleaned.replace(/^```\w*\n?/, '').replace(/\n?```$/, '');
+  const withoutCodeFences = msg
+    .trim()
+    .replace(/^```\w*\n?/, '')
+    .replace(/\n?```$/, '');
 
   // Find the first line that looks like a conventional commit
   const conventionalPattern =
     /^(feat|fix|refactor|style|docs|test|build|chore|perf|ci|revert)(\(.+?\))?:/;
-  const lines = cleaned.split('\n').map((l) => l.replace(/^["']|["']$/g, '').trim());
-  const commitLine = lines.find((l) => conventionalPattern.test(l)) || lines[0];
 
-  let result = commitLine.trim();
-  if (result.length > 72) result = `${result.slice(0, 69)}...`;
-  return result;
+  const lines = withoutCodeFences
+    .split('\n')
+    .map((line) => line.replace(/^["']|["']$/g, '').trim());
+
+  const commitLine = lines.find((line) => conventionalPattern.test(line)) ?? lines[0];
+  const trimmedResult = commitLine.trim();
+
+  if (trimmedResult.length > 72) {
+    return `${trimmedResult.slice(0, 69)}...`;
+  }
+  return trimmedResult;
 }

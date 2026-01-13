@@ -1,4 +1,6 @@
+import type { spinner } from '@clack/prompts';
 import type { AicConfig } from '../types.js';
+import { theme } from '../ui/theme.js';
 
 const AIC_CONFIG_PATH = '.aic';
 
@@ -127,6 +129,53 @@ export async function executeSection(
     }
   }
 
+  return true;
+}
+
+/**
+ * Execute commands from a section with spinner progress display
+ * Shows "Running command 1/3..." without outputting command details
+ */
+export async function executeSectionWithProgress(
+  section: keyof AicConfig,
+  config: AicConfig,
+  s: ReturnType<typeof spinner>
+): Promise<boolean> {
+  const commands = config[section];
+  if (!commands || commands.length === 0) {
+    return true;
+  }
+
+  const total = commands.length;
+
+  for (let i = 0; i < commands.length; i++) {
+    const cmd = commands[i];
+    s.start(`Running command ${i + 1}/${total}...`);
+
+    try {
+      const proc = Bun.spawn({
+        cmd: ['sh', '-c', cmd],
+        stderr: 'pipe',
+        stdout: 'pipe'
+      });
+
+      // Consume output but don't display it
+      await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+
+      const exitCode = await proc.exited;
+
+      if (exitCode !== 0) {
+        s.stop(theme.error(`Command failed: ${cmd}`));
+        return false;
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      s.stop(theme.error(`Command failed: ${errorMessage}`));
+      return false;
+    }
+  }
+
+  s.stop(theme.success(`Completed ${total} release command${total > 1 ? 's' : ''}`));
   return true;
 }
 
