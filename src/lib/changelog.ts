@@ -134,7 +134,7 @@ function buildChangelogPrompt(
 Generate a changelog entry following these rules:
 
 1. Write for END USERS, not developers
-2. Focus on what users can now DO, not implementation details
+2. Focus on capabilities and behavior changes, not implementation details
 3. Group changes into these sections (omit empty ones):
    - **Added** - New features and capabilities
    - **Changed** - Changes to existing functionality
@@ -142,14 +142,13 @@ Generate a changelog entry following these rules:
    - **Removed** - Removed features (if any)
 
 4. Rules:
-   - Use past tense (Added, Fixed, Changed)
    - Each item should be ONE clear sentence
    - Skip internal changes (refactoring, dependencies, CI/CD, tests)
    - Skip chore/build commits unless they affect users
    - Don't mention file names, function names, or technical details
-   - Focus on USER IMPACT not code changes
-   - If a commit adds a new feature, describe what it enables users to do
-   - If a commit fixes a bug, describe what problem was fixed
+   - Focus on BEHAVIOR changes not code changes
+   - Start each item with a verb: "Add", "Fix", "Update", "Remove", "Improve"
+   - Be concise - one sentence per item, no filler words
 
 5. Output ONLY the markdown changelog content (the sections)
    Do NOT include the version header - I will add that
@@ -157,11 +156,11 @@ Generate a changelog entry following these rules:
 
 Example output format:
 ### Added
-- Users can now export their data to CSV format
-- Added dark mode support
+- Add CSV export for user data
+- Add dark mode support
 
 ### Fixed
-- Fixed issue where app would crash on startup`);
+- Fix crash on startup`);
 
   return sections.join('\n\n');
 }

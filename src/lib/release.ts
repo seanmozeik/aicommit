@@ -88,6 +88,11 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
  * Interactive release command
  */
 export async function interactiveRelease(releaseType: ReleaseType): Promise<void> {
+  // Increase listener limit to avoid warnings from @clack/prompts
+  // which creates multiple readline interfaces throughout the release flow
+  process.stdin.setMaxListeners(20);
+  process.stdout.setMaxListeners(20);
+
   // Pre-flight checks
   if (!(await isGitRepo())) {
     p.outro(theme.error('Not a git repository'));
@@ -268,6 +273,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
   }
 
   p.outro(theme.success(`🚀 Released ${tagName}!`));
+  process.exit(0);
 }
 
 /**
