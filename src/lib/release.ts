@@ -180,7 +180,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
       await initializeChangelog();
     } else if (convention === 'other') {
       s.stop(theme.warning('Non-standard changelog detected'));
-      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((r) => process.stdout.write('', r));
       const migrate = await p.confirm({
         message: 'Migrate to Keep a Changelog format?'
       });
@@ -207,7 +207,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     p.log.message('');
   } catch (err) {
     s.stop(theme.warning('Changelog generation failed'));
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((r) => process.stdout.write('', r));
     p.log.warn(getErrorMessage(err));
 
     const continueWithout = await p.confirm({
@@ -243,8 +243,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     process.exit(1);
   }
 
-  // Flush terminal before prompt
-  await new Promise((resolve) => setImmediate(resolve));
+  // Flush stdout before prompt to prevent spinner artifacts
+  await new Promise((r) => process.stdout.write('', r));
 
   // Offer to push
   const shouldPush = await p.confirm({
@@ -267,8 +267,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     process.exit(1);
   }
 
-  // Flush terminal before prompt
-  await new Promise((resolve) => setImmediate(resolve));
+  // Flush stdout before prompt to prevent spinner artifacts
+  await new Promise((r) => process.stdout.write('', r));
 
   // Run publish scripts if configured
   if (aicConfig?.publish && aicConfig.publish.length > 0) {
