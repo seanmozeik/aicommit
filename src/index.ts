@@ -14,6 +14,7 @@ import { copyToClipboard } from './lib/clipboard.js';
 // Library modules
 import { classifyFiles, compressDiffs, parseUnifiedDiff } from './lib/diff-parser.js';
 import {
+  cdToGitRoot,
   commit,
   getHeadDiff,
   getRecentCommitMessages,
@@ -125,6 +126,11 @@ async function teardownSecrets() {
 // ============================================================================
 // Handle Subcommands
 // ============================================================================
+
+// Change to git root for all git-related commands
+if (command !== 'setup' && command !== 'teardown') {
+  await cdToGitRoot();
+}
 
 if (command === 'setup') {
   setupSecrets();

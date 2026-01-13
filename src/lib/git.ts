@@ -1,6 +1,30 @@
 import { $ } from 'bun';
 
 /**
+ * Get the root directory of the git repository
+ */
+export async function getGitRoot(): Promise<string | null> {
+  try {
+    return (await $`git rev-parse --show-toplevel`.text()).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Change to git repository root directory
+ * Returns true if successful, false if not in a git repo
+ */
+export async function cdToGitRoot(): Promise<boolean> {
+  const root = await getGitRoot();
+  if (root) {
+    process.chdir(root);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Check if current directory is a git repository
  */
 export async function isGitRepo(): Promise<boolean> {

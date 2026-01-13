@@ -90,8 +90,9 @@ export async function executeRelease(options: ReleaseOptions): Promise<ReleaseRe
 export async function interactiveRelease(releaseType: ReleaseType): Promise<void> {
   // Increase listener limit to avoid warnings from @clack/prompts
   // which creates multiple readline interfaces throughout the release flow
-  process.stdin.setMaxListeners(20);
-  process.stdout.setMaxListeners(20);
+  // (release scripts + publish scripts + prompts can exceed 20)
+  process.stdin.setMaxListeners(50);
+  process.stdout.setMaxListeners(50);
 
   // Pre-flight checks
   if (!(await isGitRepo())) {

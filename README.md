@@ -5,75 +5,98 @@ AI-powered commit message generator using conventional commit format.
 ## Features
 
 - Analyzes git diffs to generate semantic commit messages
-- Supports Cloudflare AI (GPT-OSS 20B) and Claude CLI backends
 - Follows [conventional commits](https://www.conventionalcommits.org/) format
 - Smart diff compression for large changesets
 - Extracts semantic info (functions, types, classes) for better context
-
-## Requirements
-
-- [Bun](https://bun.sh) runtime
-- Git
-- Cloudflare account with Workers AI access **or** [Claude CLI](https://docs.anthropic.com/en/docs/claude-cli)
-- Just command runner (`brew install just` or `cargo install just`) (recommended)
-
-### Linux clipboard (optional)
-
-For clipboard support on Linux, install one of:
-
-- `xclip` (X11)
-- `xsel` (X11)
-- `wl-copy` (Wayland)
+- Interactive file selection when no changes are staged
+- Built-in release management with changelog generation
 
 ## Installation
 
+### Homebrew (recommended)
+
 ```bash
-git clone https://github.com/your-username/aic.git
-cd aic
-bun install
-just build
+brew install seanmozeik/tap/aic
 ```
 
-This installs the `aic` binary to `~/.local/bin/`. Make sure this is in your `PATH`.
+### From source
 
-## Configuration
+Requires [Bun](https://bun.sh) runtime.
 
-### Option A: Environment Variables (all platforms)
+```bash
+git clone https://github.com/seanmozeik/AICommit.git
+cd AICommit
+bun install
+bun run build
+```
 
-Add to your shell profile (`.bashrc`, `.zshrc`, etc.):
+## Setup
+
+aic uses Cloudflare Workers AI. You'll need a Cloudflare account with Workers AI access.
+
+### Interactive setup (recommended)
+
+```bash
+aic setup
+```
+
+This prompts for your credentials and stores them securely:
+- **macOS**: Keychain
+- **Linux**: libsecret (GNOME Keyring, KWallet, etc.)
+- **Windows**: Credential Manager
+
+To remove stored credentials:
+
+```bash
+aic teardown
+```
+
+### Environment variables
+
+Alternatively, add to your shell profile:
 
 ```bash
 export AIC_CLOUDFLARE_ACCOUNT_ID=your-account-id
 export AIC_CLOUDFLARE_API_TOKEN=your-api-token
 ```
 
-### Option B: macOS Keychain
-
-1. Copy `.env.example` to `.env` and fill in your credentials
-2. Run `just setup-mac` to store in Keychain
-3. Delete the `.env` file
-
-To remove credentials later: `just teardown-mac`
-
 ## Usage
 
 ```bash
-# Generate commit message (uses Cloudflare by default)
+# Generate commit message for staged changes
 aic
 
-# Use Claude CLI instead
-aic --model claude
+# If nothing is staged, aic lets you select files interactively
 ```
 
 ### Workflow
 
-1. Stage your changes with `git add` (optional)
+1. Stage your changes with `git add` (or let aic help you select)
 2. Run `aic`
 3. Optionally describe your changes when prompted
 4. Review the generated message
-5. Confirm to commit or copy to clipboard
+5. Confirm to commit, edit, or copy to clipboard
 
-If no files are staged, `aic` analyzes all uncommitted changes.
+### Release management
+
+aic includes built-in release tooling:
+
+```bash
+# Initialize release config (.aic file)
+aic release init
+
+# Create a release
+aic release patch   # 1.0.0 → 1.0.1
+aic release minor   # 1.0.0 → 1.1.0
+aic release major   # 1.0.0 → 2.0.0
+```
+
+The release command:
+- Bumps version in package.json (or pyproject.toml, Cargo.toml, etc.)
+- Runs configured build scripts
+- Generates AI-powered changelog
+- Creates git tag
+- Optionally pushes and publishes
 
 ## How It Works
 
@@ -84,18 +107,17 @@ If no files are staged, `aic` analyzes all uncommitted changes.
 5. Sends context to AI with conventional commit guidelines
 6. Validates and formats the response
 
-## Development
+## Requirements
 
-```bash
-# Install dependencies
-bun install
+- Git
+- Cloudflare account with Workers AI access
 
-# Run in development
-just dev
+### Linux clipboard (optional)
 
-# Build binary
-just build
-```
+For clipboard support on Linux, install one of:
+- `xclip` (X11)
+- `xsel` (X11)
+- `wl-copy` (Wayland)
 
 ## License
 

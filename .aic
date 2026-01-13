@@ -21,9 +21,25 @@ cd dist && for f in aic-darwin-* aic-linux-*; do [ -f "$f" ] && tar -czvf "${f}.
 cd dist && [ -f "aic-windows-x64.exe" ] && zip aic-windows-x64.zip aic-windows-x64.exe && rm aic-windows-x64.exe
 
 # Generate checksums
-cd dist && shasum -a 256 *.tar.gz *.zip > checksums.txt && cat checksums.txt
+bun -e "import{readdir}from'fs/promises';for(const f of(await readdir('dist')).filter(f=>f.endsWith('.tar.gz')||f.endsWith('.zip'))){console.log(new Bun.CryptoHasher('sha256').update(await Bun.file('dist/'+f).arrayBuffer()).digest('hex')+'  '+f)}" > dist/checksums.txt && cat dist/checksums.txt
 
 [publish]
 # Extract latest changelog entry and create GitHub release with binaries
 awk '/^## \[/{count++} count==1' CHANGELOG.md | tail -n +2 > /tmp/release-notes.md
-gh release create "v$(node -p "require('./package.json').version")" dist/*.tar.gz dist/*.zip dist/checksums.txt --title "v$(node -p "require('./package.json').version")" --notes-file /tmp/release-notes.md
+gh release create "v$(bun -p "require('./package.json').version")" dist/*.tar.gz dist/*.zip dist/checksums.txt --title "v$(bun -p "require('./package.json').version")" --notes-file /tmp/release-notes.md
+
+# Update Homebrew formula with new version and SHA256 checksums
+VERSION=$(bun -p "require('./package.json').version") && \
+SHA_DARWIN_ARM64=$(bun -e "console.log(new Bun.CryptoHasher('sha256').update(await Bun.file('dist/aic-darwin-arm64.tar.gz').arrayBuffer()).digest('hex'))") && \
+SHA_DARWIN_X64=$(bun -e "console.log(new Bun.CryptoHasher('sha256').update(await Bun.file('dist/aic-darwin-x64.tar.gz').arrayBuffer()).digest('hex'))") && \
+SHA_LINUX_ARM64=$(bun -e "console.log(new Bun.CryptoHasher('sha256').update(await Bun.file('dist/aic-linux-arm64.tar.gz').arrayBuffer()).digest('hex'))") && \
+SHA_LINUX_X64=$(bun -e "console.log(new Bun.CryptoHasher('sha256').update(await Bun.file('dist/aic-linux-x64.tar.gz').arrayBuffer()).digest('hex'))") && \
+sed -i '' "s/version \".*\"/version \"$VERSION\"/" Formula/aic.rb && \
+awk -v da="$SHA_DARWIN_ARM64" -v dx="$SHA_DARWIN_X64" -v la="$SHA_LINUX_ARM64" -v lx="$SHA_LINUX_X64" '/darwin-arm64\.tar\.gz/{found="da"} /darwin-x64\.tar\.gz/{found="dx"} /linux-arm64\.tar\.gz/{found="la"} /linux-x64\.tar\.gz/{found="lx"} /sha256/{if(found=="da"){sub(/sha256 ".*"/, "sha256 \""da"\"")} else if(found=="dx"){sub(/sha256 ".*"/, "sha256 \""dx"\"")} else if(found=="la"){sub(/sha256 ".*"/, "sha256 \""la"\"")} else if(found=="lx"){sub(/sha256 ".*"/, "sha256 \""lx"\"")}} {print}' Formula/aic.rb > /tmp/aic.rb && mv /tmp/aic.rb Formula/aic.rb
+
+# Copy formula to tap and commit
+cp Formula/aic.rb ~/workspace/tap/Formula/aic.rb && \
+cd ~/workspace/tap && \
+git add Formula/aic.rb && \
+git commit -m "aic $(bun -p "require('$OLDPWD/package.json').version")" && \
+git push
