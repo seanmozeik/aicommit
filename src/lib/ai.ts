@@ -169,7 +169,8 @@ export function buildPrompt(
   semantics: SemanticInfo,
   fileList: string,
   compressedDiffs: string,
-  selectedType?: string
+  selectedType?: string,
+  recentCommits?: string[]
 ): string {
   const sections: string[] = ['Generate a conventional commit message.'];
 
@@ -177,6 +178,13 @@ export function buildPrompt(
     const typeDesc = COMMIT_TYPES[selectedType] || '';
     sections.push(
       `## User Selection\nThe user indicated this commit is most likely a "${selectedType}" (${typeDesc}).\nUse this type unless absolutely certain another type is more accurate.\nYou can still add a scope in parentheses, e.g., ${selectedType}(scope): description.`
+    );
+  }
+
+  if (recentCommits && recentCommits.length > 0) {
+    const commitList = recentCommits.map((c) => `- ${c}`).join('\n');
+    sections.push(
+      `## Recent Project Activity\nThese are the most recent commits in this repository, showing what the developer has been working on. Use this context to better understand how the current changes fit into the ongoing work:\n${commitList}`
     );
   }
 

@@ -16,6 +16,7 @@ import { classifyFiles, compressDiffs, parseUnifiedDiff } from './lib/diff-parse
 import {
   commit,
   getHeadDiff,
+  getRecentCommitMessages,
   getStagedDiff,
   getStagedFiles,
   getStatus,
@@ -301,6 +302,7 @@ if (command === 'setup') {
     const semantics = extractSemantics(classified.included);
     const compressedDiffs = compressDiffs(classified.included);
     const stats = formatStats(classified, parsed.totalAdditions, parsed.totalDeletions);
+    const recentCommits = await getRecentCommitMessages(3);
 
     // Build prompt
     const prompt = buildPrompt(
@@ -309,7 +311,8 @@ if (command === 'setup') {
       semantics,
       fileList.join('\n'),
       compressedDiffs,
-      selectedType as string
+      selectedType as string,
+      recentCommits
     );
 
     // Start AI generation in background immediately (runs while we display panels)

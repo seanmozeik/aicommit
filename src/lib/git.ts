@@ -104,6 +104,28 @@ export async function getRecentCommits(count: number = 5): Promise<string[]> {
 }
 
 /**
+ * Get recent commit messages (subject only, no hash)
+ */
+export async function getRecentCommitMessages(count: number = 3): Promise<string[]> {
+  try {
+    const output = await $`git log --format=%s -${count}`.text();
+    return output.trim().split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Derive a human-readable hint from git status code
+ */
+function getStatusHint(status: string): string {
+  if (status === '??') return 'new';
+  if (status.includes('M')) return 'modified';
+  if (status.includes('D')) return 'deleted';
+  return status.trim();
+}
+
+/**
  * Parse changed files from porcelain status output
  */
 export function parseStatusOutput(statusOutput: string): Array<{
@@ -117,11 +139,8 @@ export function parseStatusOutput(statusOutput: string): Array<{
     .map((line) => {
       const status = line.slice(0, 2);
       const path = line.slice(2).trimStart();
-      const isUntracked = status === '??';
-      const isModified = status.includes('M');
-      const isDeleted = status.includes('D');
       return {
-        hint: isUntracked ? 'new' : isModified ? 'modified' : isDeleted ? 'deleted' : status.trim(),
+        hint: getStatusHint(status),
         path,
         status
       };
