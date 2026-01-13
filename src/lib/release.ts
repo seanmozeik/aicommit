@@ -180,6 +180,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
       await initializeChangelog();
     } else if (convention === 'other') {
       s.stop(theme.warning('Non-standard changelog detected'));
+      await new Promise((resolve) => setImmediate(resolve));
       const migrate = await p.confirm({
         message: 'Migrate to Keep a Changelog format?'
       });
@@ -206,6 +207,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     p.log.message('');
   } catch (err) {
     s.stop(theme.warning('Changelog generation failed'));
+    await new Promise((resolve) => setImmediate(resolve));
     p.log.warn(getErrorMessage(err));
 
     const continueWithout = await p.confirm({
@@ -241,6 +243,9 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     process.exit(1);
   }
 
+  // Flush terminal before prompt
+  await new Promise((resolve) => setImmediate(resolve));
+
   // Offer to push
   const shouldPush = await p.confirm({
     message: 'Push release (with tags)?'
@@ -261,6 +266,9 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     p.outro(theme.warning(`Released ${tagName} locally. Push manually: git push --follow-tags`));
     process.exit(1);
   }
+
+  // Flush terminal before prompt
+  await new Promise((resolve) => setImmediate(resolve));
 
   // Run publish scripts if configured
   if (aicConfig?.publish && aicConfig.publish.length > 0) {
