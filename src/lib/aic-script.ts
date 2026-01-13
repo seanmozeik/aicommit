@@ -178,16 +178,19 @@ export async function executeSectionWithProgress(
 
       if (exitCode !== 0) {
         s.stop(theme.error(`Command failed: ${cmd}`));
+        await new Promise((resolve) => setImmediate(resolve));
         return false;
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       s.stop(theme.error(`Command failed: ${errorMessage}`));
+      await new Promise((resolve) => setImmediate(resolve));
       return false;
     }
   }
 
   s.stop(theme.success(`Completed ${total} release command${total > 1 ? 's' : ''}`));
+  await new Promise((resolve) => setImmediate(resolve));
   return true;
 }
 
