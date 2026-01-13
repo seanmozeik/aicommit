@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-01-13
+
+### Added
+- Users could now include recent commit messages in AI prompts, giving better context when generating suggestions.  
+- Users could pick a commit type with a visual picker and see a progress spinner during release operations.  
+- Users could generate a complete changelog and perform releases with a single command.  
+- Users could build the tool for multiple platforms, install it via Homebrew, and run it on various operating systems.  
+- Users could run interactive setup or teardown commands to configure or clean up the tool easily.  
+- Users could select files interactively when no changes were staged.  
+- Users could copy text to the clipboard across all supported platforms.  
+- Users could opt to push commits immediately after creating them.  
+- Users could now see an estimate of token usage and benefited from the improved OpenAI GPT‑OSS 20B model when generating.
+
+### Changed
+- The user interface was overhauled to improve usability and make the tool feel more modular.  
+- Prompt generation was enhanced, providing clearer suggestions and reducing noise.  
+- Keychain secret retrieval on macOS became faster and more reliable using a new API.  
+- Cloudflare secret key handling was unified across all environments.  
+- Secret storage now accepts environment variables and uses a minimal diff algorithm for efficiency.  
+- Build prompts and configuration parsing were streamlined for smoother use.  
+
+### Fixed
+- Fixed crashes that occurred when the tool was run in a non‑git repository.  
+- Fixed failures that caused the tool to crash after a push operation.  
+- Fixed an issue on Linux where missing libsecret caused errors for all architectures.  
+- Fixed noisy console output during git push by silencing extraneous messages.  
+- Fixed errors related to loading non‑existent configuration or backup files.  
+
+---
+
 ## [0.2.0] - 2026-01-06
 
 ### Added
