@@ -31,21 +31,33 @@ export async function parseAicConfig(): Promise<AicConfig | null> {
 
 /**
  * Parse .aic file content into structured config
+ * Supports line continuations with trailing backslash
  */
 export function parseAicContent(content: string): AicConfig {
   const config: AicConfig = {};
   let currentSection: keyof AicConfig | null = null;
+  let pendingLine = '';
 
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
 
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith('#')) {
+    // Skip empty lines and comments (but not if we're in a continuation)
+    if (!pendingLine && (!trimmed || trimmed.startsWith('#'))) {
       continue;
     }
 
+    // Handle line continuation
+    if (trimmed.endsWith('\\')) {
+      pendingLine += `${trimmed.slice(0, -1)} `;
+      continue;
+    }
+
+    // Complete the line (with any pending continuation)
+    const fullLine = pendingLine + trimmed;
+    pendingLine = '';
+
     // Check for section header [name]
-    const sectionMatch = trimmed.match(/^\[(\w+)\]$/);
+    const sectionMatch = fullLine.match(/^\[(\w+)\]$/);
     if (sectionMatch) {
       currentSection = sectionMatch[1] as keyof AicConfig;
       config[currentSection] = [];
@@ -54,7 +66,7 @@ export function parseAicContent(content: string): AicConfig {
 
     // Add command to current section
     if (currentSection && config[currentSection]) {
-      config[currentSection]?.push(trimmed);
+      config[currentSection]?.push(fullLine);
     }
   }
 
