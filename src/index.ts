@@ -43,6 +43,35 @@ import { frappe, theme } from './ui/theme.js';
 const args = Bun.argv.slice(2);
 const command = args[0];
 
+// Read version from package.json
+const packageJson = await Bun.file(new URL('../package.json', import.meta.url)).json();
+const version = packageJson.version as string;
+
+// Handle --version flag
+if (args.includes('--version') || args.includes('-v')) {
+  console.log(`aic v${version}`);
+  process.exit(0);
+}
+
+// Handle --help flag
+if (args.includes('--help') || args.includes('-h')) {
+  showBanner();
+  console.log(`aic v${version} - AI Commit Message Generator\n`);
+  console.log('Usage: aic [command] [options]\n');
+  console.log('Commands:');
+  console.log('  (default)          Generate a commit message from staged/unstaged changes');
+  console.log('  setup              Configure Cloudflare AI credentials');
+  console.log('  teardown           Remove stored credentials');
+  console.log('  release <type>     Create a release (patch|minor|major)');
+  console.log('  release-init       Initialize release configuration');
+  console.log('  changelog-latest   Output the latest changelog entry\n');
+  console.log('Options:');
+  console.log('  --model <model>    AI model to use (cloudflare|claude)');
+  console.log('  --version, -v      Show version number');
+  console.log('  --help, -h         Show this help message\n');
+  process.exit(0);
+}
+
 // ============================================================================
 // Setup Command - Interactive secret configuration
 // ============================================================================
