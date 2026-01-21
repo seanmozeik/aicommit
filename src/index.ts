@@ -35,6 +35,8 @@ import type { ModelType, ReleaseType } from './types.js';
 import { showBanner } from './ui/banner.js';
 import { displayCommitMessage, displayContextPanel } from './ui/context-panel.js';
 import { frappe, theme } from './ui/theme.js';
+// Import package.json directly so Bun embeds it at compile time
+import packageJson from '../package.json';
 
 // ============================================================================
 // CLI Arguments
@@ -42,10 +44,7 @@ import { frappe, theme } from './ui/theme.js';
 
 const args = Bun.argv.slice(2);
 const command = args[0];
-
-// Read version from package.json
-const packageJson = await Bun.file(new URL('../package.json', import.meta.url)).json();
-const version = packageJson.version as string;
+const version = packageJson.version;
 
 // Handle --version flag
 if (args.includes('--version') || args.includes('-v')) {
