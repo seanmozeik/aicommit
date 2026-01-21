@@ -359,39 +359,47 @@ if (command === 'setup') {
       recentCommits
     );
 
+    // Helper to generate commit message with spinner
+    async function generateMessage(): Promise<string> {
+      const s = p.spinner();
+      s.start(frappe.subtext1(`Generating with ${model}...`));
+
+      try {
+        const response =
+          model === 'claude'
+            ? await generateWithClaude(prompt)
+            : await generateWithCloudflare(prompt);
+        const message = validateMessage(response.text);
+        const usage = response.usage;
+        if (usage) {
+          const neurons = Math.round(
+            usage.input_tokens * 0.018182 + usage.output_tokens * 0.027273
+          );
+          s.stop(
+            frappe.subtext1(
+              `Done (in: ${usage.input_tokens}, out: ${usage.output_tokens}, ~${neurons} neurons)`
+            )
+          );
+        } else {
+          s.stop(frappe.subtext1('Done'));
+        }
+        return message;
+      } catch (err) {
+        s.stop(theme.error('Failed'));
+        throw err;
+      }
+    }
+
     // Start AI generation in background immediately (runs while we display panels)
-    const aiPromise = (async () => {
-      const response =
-        model === 'claude'
-          ? await generateWithClaude(prompt)
-          : await generateWithCloudflare(prompt);
-      return { message: validateMessage(response.text), usage: response.usage };
-    })();
+    const aiPromise = generateMessage();
 
     // Display context panel (AI is already running in background)
     await displayContextPanel(classified, parsed.totalAdditions, parsed.totalDeletions);
 
-    // Show spinner while waiting for AI to complete
-    const s = p.spinner();
-    s.start(frappe.subtext1(`Generating with ${model}...`));
-
     let commitMessage: string;
     try {
-      const result = await aiPromise;
-      commitMessage = result.message;
-      const usage = result.usage;
-      if (usage) {
-        const neurons = Math.round(usage.input_tokens * 0.018182 + usage.output_tokens * 0.027273);
-        s.stop(
-          frappe.subtext1(
-            `Done (in: ${usage.input_tokens}, out: ${usage.output_tokens}, ~${neurons} neurons)`
-          )
-        );
-      } else {
-        s.stop(frappe.subtext1('Done'));
-      }
+      commitMessage = await aiPromise;
     } catch (err) {
-      s.stop(theme.error('Failed'));
       p.log.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
@@ -408,6 +416,7 @@ if (command === 'setup') {
         options: [
           ...(hasStaged ? [{ hint: 'staged files', label: 'Commit', value: 'commit' }] : []),
           { hint: 'modify the message', label: 'Edit', value: 'edit' },
+          { hint: 'regenerate message', label: 'Retry', value: 'retry' },
           { label: 'Copy to clipboard', value: 'copy' },
           { label: 'Cancel', value: 'cancel' }
         ]
@@ -427,6 +436,16 @@ if (command === 'setup') {
         if (p.isCancel(edited)) continue;
         finalMessage = edited as string;
         displayCommitMessage(finalMessage);
+        continue;
+      }
+
+      if (action === 'retry') {
+        try {
+          finalMessage = await generateMessage();
+          displayCommitMessage(finalMessage);
+        } catch (err) {
+          p.log.error(err instanceof Error ? err.message : String(err));
+        }
         continue;
       }
 

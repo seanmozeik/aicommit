@@ -236,10 +236,5 @@ export function validateMessage(msg: string): string {
     .map((line) => line.replace(/^["']|["']$/g, '').trim());
 
   const commitLine = lines.find((line) => conventionalPattern.test(line)) ?? lines[0];
-  const trimmedResult = commitLine.trim();
-
-  if (trimmedResult.length > 72) {
-    return `${trimmedResult.slice(0, 69)}...`;
-  }
-  return trimmedResult;
+  return commitLine.trim();
 }
