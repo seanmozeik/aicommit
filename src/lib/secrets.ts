@@ -6,7 +6,7 @@ const SECRETS_SERVICE = 'com.aicommit.cli';
 const CONFIG_KEY = 'AIC_CONFIG';
 
 // In-memory cache to avoid multiple keychain prompts per process
-let configCache: SecretsConfig | null | undefined = undefined;
+let configCache: SecretsConfig | null | undefined;
 
 /**
  * Get config from keychain (single prompt, cached)

@@ -4,16 +4,16 @@
 class Aic < Formula
   desc "AI-powered commit message generator using conventional commit format"
   homepage "https://github.com/seanmozeik/AICommit"
-  version "0.2.9"
+  version "0.3.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
       url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-darwin-arm64.tar.gz"
-      sha256 "0f172da26fea569d04b6d56ebd2f1c20d63b4c954e600c21472ddf51c556eefe"
+      sha256 "ef96107041fae4c48ab2545dfcb646ced601fef926d327dc7c0fb86446732c8e"
     else
       url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-darwin-x64.tar.gz"
-      sha256 "c09f85c1f7228502d18cd885446479cf33962a8123da042dde969c0acccd1f6b"
+      sha256 "9a9ea0e9eeedcb3b6c3dceda4635c60156cb1aba9473d23a8b2c96775062ecb0"
     end
   end
 
@@ -22,10 +22,10 @@ class Aic < Formula
 
     if Hardware::CPU.arm?
       url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-linux-arm64.tar.gz"
-      sha256 "f615161330085cfcfd6850174f009bcb9f291f699bb9d438ed8a9bc1fdacc6a9"
+      sha256 "7a66d41440087cbe4d441f1529fbe6497be17715ac5124ec5f4888c9b0603bdc"
     else
       url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-linux-x64.tar.gz"
-      sha256 "2180e5ab34c28ea503da0da7b7fe53bee6f86045ac92d4fcc9fc69506e3b1cca"
+      sha256 "da82bef673f5b507dac28f415e9c41d64464ef1db5a0f94ec54dacaf752981a4"
     end
   end
 

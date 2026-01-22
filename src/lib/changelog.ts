@@ -1,9 +1,14 @@
 import { $ } from 'bun';
-import type { ChangelogEntry, CommitInfo, SemanticInfo } from '../types.js';
-import { generateWithCloudflare } from './ai.js';
+import type { ChangelogEntry, CommitInfo, GenerateResult, SemanticInfo } from '../types.js';
+import {
+  generateWithAnthropic,
+  generateWithClaude,
+  generateWithCloudflare,
+  generateWithOpenAI
+} from './ai.js';
 import { classifyFiles, parseUnifiedDiff } from './diff-parser.js';
-import { extractSemantics } from './semantic.js';
 import { getConfig } from './secrets.js';
+import { extractSemantics } from './semantic.js';
 
 const CHANGELOG_PATH = 'CHANGELOG.md';
 
@@ -188,10 +193,36 @@ export async function generateChangelog(
 
   const prompt = buildChangelogPrompt(newVersion, commits, diffStats, semantics);
   const config = await getConfig();
-  if (!config?.providers.cloudflare) {
-    throw new Error('Cloudflare not configured. Run: aic setup');
+  if (!config) {
+    throw new Error('No AI provider configured. Run: aic setup');
   }
-  const result = await generateWithCloudflare(prompt, config);
+
+  const provider = config.defaultProvider;
+  let result: GenerateResult;
+
+  switch (provider) {
+    case 'claude':
+      result = await generateWithClaude(prompt);
+      break;
+    case 'anthropic':
+      if (!config.providers.anthropic) {
+        throw new Error('Anthropic not configured. Run: aic setup');
+      }
+      result = await generateWithAnthropic(prompt, config);
+      break;
+    case 'openai':
+      if (!config.providers.openai) {
+        throw new Error('OpenAI not configured. Run: aic setup');
+      }
+      result = await generateWithOpenAI(prompt, config);
+      break;
+    default:
+      if (!config.providers.cloudflare) {
+        throw new Error('Cloudflare not configured. Run: aic setup');
+      }
+      result = await generateWithCloudflare(prompt, config);
+      break;
+  }
 
   return cleanChangelogResponse(result.text);
 }

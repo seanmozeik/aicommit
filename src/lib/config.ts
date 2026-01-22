@@ -32,24 +32,24 @@ export interface ProviderInfo {
 }
 
 export const PROVIDERS: Record<Provider, ProviderInfo> = {
-  cloudflare: {
-    name: 'Cloudflare AI',
-    description: 'Cloudflare Workers AI',
+  anthropic: {
+    description: 'Direct Anthropic API access',
+    name: 'Anthropic API',
     requiresCredentials: true
   },
   claude: {
-    name: 'Claude CLI',
     description: 'Anthropic Claude via CLI (requires claude installed)',
+    name: 'Claude CLI',
     requiresCredentials: false
   },
-  anthropic: {
-    name: 'Anthropic API',
-    description: 'Direct Anthropic API access',
+  cloudflare: {
+    description: 'Cloudflare Workers AI',
+    name: 'Cloudflare AI',
     requiresCredentials: true
   },
   openai: {
-    name: 'OpenAI API',
     description: 'OpenAI GPT models',
+    name: 'OpenAI API',
     requiresCredentials: true
   }
 };

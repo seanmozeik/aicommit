@@ -28,6 +28,6 @@ export function showBanner(): void {
     .map((line) => indent + line)
     .join('\n');
 
-  console.log('\n' + bannerGradient(indentedBanner));
+  console.log(`\n${bannerGradient(indentedBanner)}`);
   console.log(); // Spacing after banner
 }

@@ -1,6 +1,6 @@
 import type { GenerateResult, SemanticInfo } from '../types.js';
-import { formatSemantics } from './semantic.js';
 import type { SecretsConfig } from './config.js';
+import { formatSemantics } from './semantic.js';
 
 // Commit type definitions
 export const COMMIT_TYPES: Record<string, string> = {
@@ -85,17 +85,17 @@ export async function generateWithAnthropic(
   }
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': anthropic.apiKey,
-      'anthropic-version': '2023-06-01'
-    },
     body: JSON.stringify({
-      model: 'claude-3-haiku-20240307',
       max_tokens: 256,
-      messages: [{ role: 'user', content: prompt }]
-    })
+      messages: [{ content: prompt, role: 'user' }],
+      model: 'claude-haiku-4-5-20251001'
+    }),
+    headers: {
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json',
+      'x-api-key': anthropic.apiKey
+    },
+    method: 'POST'
   });
 
   if (!response.ok) {
@@ -126,16 +126,16 @@ export async function generateWithOpenAI(
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openai.apiKey}`
-    },
     body: JSON.stringify({
-      model: 'gpt-4o-mini',
       max_tokens: 256,
-      messages: [{ role: 'user', content: prompt }]
-    })
+      messages: [{ content: prompt, role: 'user' }],
+      model: 'gpt-4.1-mini'
+    }),
+    headers: {
+      Authorization: `Bearer ${openai.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
   });
 
   if (!response.ok) {

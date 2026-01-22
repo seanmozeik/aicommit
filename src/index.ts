@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import * as p from '@clack/prompts';
+// Import package.json directly so Bun embeds it at compile time
+import packageJson from '../package.json';
 import {
   buildPrompt,
   COMMIT_TYPES,
@@ -10,9 +12,8 @@ import {
   generateWithOpenAI,
   validateMessage
 } from './lib/ai.js';
-import { getConfig, setConfig, deleteConfig } from './lib/secrets.js';
-import { PROVIDERS, type SecretsConfig, type Provider } from './lib/config.js';
 import { copyToClipboard } from './lib/clipboard.js';
+import { PROVIDERS, type Provider, type SecretsConfig } from './lib/config.js';
 // Library modules
 import { classifyFiles, compressDiffs, parseUnifiedDiff } from './lib/diff-parser.js';
 import {
@@ -31,14 +32,13 @@ import {
   stageFiles
 } from './lib/git.js';
 import { initRelease, interactiveRelease } from './lib/release.js';
+import { deleteConfig, getConfig, setConfig } from './lib/secrets.js';
 import { extractSemantics, formatStats } from './lib/semantic.js';
 import type { GenerateResult, ReleaseType } from './types.js';
 // UI components
 import { showBanner } from './ui/banner.js';
 import { displayCommitMessage, displayContextPanel } from './ui/context-panel.js';
 import { frappe, theme } from './ui/theme.js';
-// Import package.json directly so Bun embeds it at compile time
-import packageJson from '../package.json';
 
 // ============================================================================
 // CLI Arguments
@@ -86,9 +86,9 @@ async function setupSecrets() {
 
   // Provider selection
   const providerOptions = Object.entries(PROVIDERS).map(([key, info]) => ({
-    value: key as Provider,
+    hint: info.description,
     label: info.name,
-    hint: info.description
+    value: key as Provider
   }));
 
   const selectedProvider = await p.select({
@@ -105,7 +105,7 @@ async function setupSecrets() {
   const providerInfo = PROVIDERS[provider];
 
   // Collect credentials based on provider
-  let newConfig: SecretsConfig = existingConfig ?? {
+  const newConfig: SecretsConfig = existingConfig ?? {
     defaultProvider: provider,
     providers: {}
   };
@@ -157,7 +157,7 @@ async function setupSecrets() {
     newConfig.providers.openai = { apiKey: apiKey.trim() };
   } else if (provider === 'claude') {
     // Validate claude CLI is installed
-    const proc = Bun.spawn({ cmd: ['which', 'claude'], stdout: 'pipe', stderr: 'pipe' });
+    const proc = Bun.spawn({ cmd: ['which', 'claude'], stderr: 'pipe', stdout: 'pipe' });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
       p.log.error('Claude CLI not found. Install it from: https://claude.ai/download');
@@ -169,8 +169,8 @@ async function setupSecrets() {
   // Ask if this should be the default
   if (existingConfig && existingConfig.defaultProvider !== provider) {
     const makeDefault = await p.confirm({
-      message: `Set ${providerInfo.name} as default provider?`,
-      initialValue: true
+      initialValue: true,
+      message: `Set ${providerInfo.name} as default provider?`
     });
     if (!p.isCancel(makeDefault) && makeDefault) {
       newConfig.defaultProvider = provider;
@@ -225,11 +225,11 @@ async function teardownSecrets() {
   }
 
   const removeOptions = [
-    { value: 'all', label: 'Remove all credentials', hint: 'Delete entire configuration' },
+    { hint: 'Delete entire configuration', label: 'Remove all credentials', value: 'all' },
     ...configuredProviders.map((key) => ({
-      value: key,
+      hint: key === existingConfig.defaultProvider ? '(current default)' : undefined,
       label: `Remove ${PROVIDERS[key].name}`,
-      hint: key === existingConfig.defaultProvider ? '(current default)' : undefined
+      value: key
     }))
   ];
 
@@ -506,7 +506,7 @@ if (command === 'setup') {
     );
 
     // Helper to generate commit message with spinner
-    async function generateMessage(): Promise<string> {
+    async function generateMessage(cfg: SecretsConfig | null): Promise<string> {
       const s = p.spinner();
       s.start(frappe.subtext1(`Generating with ${provider}...`));
 
@@ -517,14 +517,13 @@ if (command === 'setup') {
             response = await generateWithClaude(prompt);
             break;
           case 'anthropic':
-            response = await generateWithAnthropic(prompt, config!);
+            response = await generateWithAnthropic(prompt, cfg as SecretsConfig);
             break;
           case 'openai':
-            response = await generateWithOpenAI(prompt, config!);
+            response = await generateWithOpenAI(prompt, cfg as SecretsConfig);
             break;
-          case 'cloudflare':
           default:
-            response = await generateWithCloudflare(prompt, config!);
+            response = await generateWithCloudflare(prompt, cfg as SecretsConfig);
             break;
         }
         const message = validateMessage(response.text);
@@ -542,7 +541,7 @@ if (command === 'setup') {
     }
 
     // Start AI generation in background immediately (runs while we display panels)
-    const aiPromise = generateMessage();
+    const aiPromise = generateMessage(config);
 
     // Display context panel (AI is already running in background)
     await displayContextPanel(classified, parsed.totalAdditions, parsed.totalDeletions);
@@ -592,7 +591,7 @@ if (command === 'setup') {
 
       if (action === 'retry') {
         try {
-          finalMessage = await generateMessage();
+          finalMessage = await generateMessage(config);
           displayCommitMessage(finalMessage);
         } catch (err) {
           p.log.error(err instanceof Error ? err.message : String(err));
