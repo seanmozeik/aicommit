@@ -4,12 +4,14 @@ import * as p from '@clack/prompts';
 import {
   buildPrompt,
   COMMIT_TYPES,
-  deleteSecret,
+  generateWithAnthropic,
   generateWithClaude,
   generateWithCloudflare,
-  setSecret,
+  generateWithOpenAI,
   validateMessage
 } from './lib/ai.js';
+import { getConfig, setConfig, deleteConfig } from './lib/secrets.js';
+import { PROVIDERS, type SecretsConfig, type Provider } from './lib/config.js';
 import { copyToClipboard } from './lib/clipboard.js';
 // Library modules
 import { classifyFiles, compressDiffs, parseUnifiedDiff } from './lib/diff-parser.js';
@@ -30,7 +32,7 @@ import {
 } from './lib/git.js';
 import { initRelease, interactiveRelease } from './lib/release.js';
 import { extractSemantics, formatStats } from './lib/semantic.js';
-import type { ModelType, ReleaseType } from './types.js';
+import type { GenerateResult, ReleaseType } from './types.js';
 // UI components
 import { showBanner } from './ui/banner.js';
 import { displayCommitMessage, displayContextPanel } from './ui/context-panel.js';
@@ -65,7 +67,7 @@ if (args.includes('--help') || args.includes('-h')) {
   console.log('  release-init       Initialize release configuration');
   console.log('  changelog-latest   Output the latest changelog entry\n');
   console.log('Options:');
-  console.log('  --model <model>    AI model to use (cloudflare|claude)');
+  console.log('  --provider <name>  AI provider (cloudflare|claude|anthropic|openai)');
   console.log('  --version, -v      Show version number');
   console.log('  --help, -h         Show this help message\n');
   process.exit(0);
@@ -77,39 +79,115 @@ if (args.includes('--help') || args.includes('-h')) {
 
 async function setupSecrets() {
   showBanner();
-  p.intro(frappe.text('Setup Cloudflare AI credentials'));
+  p.intro(frappe.text('Setup AI Provider'));
 
-  const accountId = await p.text({
-    message: 'Cloudflare Account ID:',
-    placeholder: 'your-account-id',
-    validate: (v) => (v.trim() ? undefined : 'Account ID is required')
+  // Load existing config to preserve other providers
+  const existingConfig = await getConfig();
+
+  // Provider selection
+  const providerOptions = Object.entries(PROVIDERS).map(([key, info]) => ({
+    value: key as Provider,
+    label: info.name,
+    hint: info.description
+  }));
+
+  const selectedProvider = await p.select({
+    message: 'Select provider to configure:',
+    options: providerOptions
   });
 
-  if (p.isCancel(accountId)) {
+  if (p.isCancel(selectedProvider)) {
     p.outro(frappe.subtext1('Cancelled'));
     process.exit(0);
   }
 
-  const apiToken = await p.password({
-    message: 'Cloudflare API Token:',
-    validate: (v) => (v.trim() ? undefined : 'API Token is required')
-  });
+  const provider = selectedProvider as Provider;
+  const providerInfo = PROVIDERS[provider];
 
-  if (p.isCancel(apiToken)) {
-    p.outro(frappe.subtext1('Cancelled'));
-    process.exit(0);
+  // Collect credentials based on provider
+  let newConfig: SecretsConfig = existingConfig ?? {
+    defaultProvider: provider,
+    providers: {}
+  };
+
+  if (provider === 'cloudflare') {
+    const accountId = await p.text({
+      message: 'Cloudflare Account ID:',
+      validate: (v) => (v.trim() ? undefined : 'Account ID is required')
+    });
+    if (p.isCancel(accountId)) {
+      p.outro(frappe.subtext1('Cancelled'));
+      process.exit(0);
+    }
+
+    const apiToken = await p.password({
+      message: 'Cloudflare API Token:',
+      validate: (v) => (v.trim() ? undefined : 'API Token is required')
+    });
+    if (p.isCancel(apiToken)) {
+      p.outro(frappe.subtext1('Cancelled'));
+      process.exit(0);
+    }
+
+    newConfig.providers.cloudflare = {
+      accountId: accountId.trim(),
+      apiToken: apiToken.trim()
+    };
+  } else if (provider === 'anthropic') {
+    const apiKey = await p.password({
+      message: 'Anthropic API Key:',
+      validate: (v) => (v.trim() ? undefined : 'API Key is required')
+    });
+    if (p.isCancel(apiKey)) {
+      p.outro(frappe.subtext1('Cancelled'));
+      process.exit(0);
+    }
+
+    newConfig.providers.anthropic = { apiKey: apiKey.trim() };
+  } else if (provider === 'openai') {
+    const apiKey = await p.password({
+      message: 'OpenAI API Key:',
+      validate: (v) => (v.trim() ? undefined : 'API Key is required')
+    });
+    if (p.isCancel(apiKey)) {
+      p.outro(frappe.subtext1('Cancelled'));
+      process.exit(0);
+    }
+
+    newConfig.providers.openai = { apiKey: apiKey.trim() };
+  } else if (provider === 'claude') {
+    // Validate claude CLI is installed
+    const proc = Bun.spawn({ cmd: ['which', 'claude'], stdout: 'pipe', stderr: 'pipe' });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      p.log.error('Claude CLI not found. Install it from: https://claude.ai/download');
+      process.exit(1);
+    }
+    p.log.success('Claude CLI found');
+  }
+
+  // Ask if this should be the default
+  if (existingConfig && existingConfig.defaultProvider !== provider) {
+    const makeDefault = await p.confirm({
+      message: `Set ${providerInfo.name} as default provider?`,
+      initialValue: true
+    });
+    if (!p.isCancel(makeDefault) && makeDefault) {
+      newConfig.defaultProvider = provider;
+    }
+  } else {
+    newConfig.defaultProvider = provider;
   }
 
   const s = p.spinner();
-  s.start('Storing secrets...');
+  s.start('Saving configuration...');
 
   try {
-    await setSecret('AIC_CLOUDFLARE_ACCOUNT_ID', accountId.trim());
-    await setSecret('AIC_CLOUDFLARE_API_TOKEN', apiToken.trim());
-    s.stop(theme.success('Secrets stored securely'));
-    p.outro(theme.success('Setup complete! Run aic to generate commit messages.'));
+    await setConfig(newConfig);
+    s.stop(theme.success('Configuration saved'));
+    p.outro(theme.success(`${providerInfo.name} configured! Run aic to generate commit messages.`));
   } catch (err) {
-    s.stop(theme.error('Failed to store secrets'));
+    s.stop(theme.error('Failed to save configuration'));
     p.log.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -123,29 +201,71 @@ async function teardownSecrets() {
   showBanner();
   p.intro(frappe.text('Remove stored credentials'));
 
-  const confirm = await p.confirm({
-    message: 'Remove all stored secrets?'
+  const existingConfig = await getConfig();
+
+  if (!existingConfig) {
+    p.outro(frappe.subtext1('No credentials stored'));
+    process.exit(0);
+  }
+
+  // List configured providers
+  const configuredProviders = Object.keys(existingConfig.providers) as Provider[];
+  if (configuredProviders.length === 0 && existingConfig.defaultProvider === 'claude') {
+    // Only claude configured, no credentials to remove
+    const confirm = await p.confirm({
+      message: 'Remove configuration? (Claude CLI has no stored credentials)'
+    });
+    if (p.isCancel(confirm) || !confirm) {
+      p.outro(frappe.subtext1('Cancelled'));
+      process.exit(0);
+    }
+    await deleteConfig();
+    p.outro(theme.success('Configuration removed'));
+    process.exit(0);
+  }
+
+  const removeOptions = [
+    { value: 'all', label: 'Remove all credentials', hint: 'Delete entire configuration' },
+    ...configuredProviders.map((key) => ({
+      value: key,
+      label: `Remove ${PROVIDERS[key].name}`,
+      hint: key === existingConfig.defaultProvider ? '(current default)' : undefined
+    }))
+  ];
+
+  const selected = await p.select({
+    message: 'What would you like to remove?',
+    options: removeOptions
   });
 
-  if (p.isCancel(confirm) || !confirm) {
+  if (p.isCancel(selected)) {
     p.outro(frappe.subtext1('Cancelled'));
     process.exit(0);
   }
 
   const s = p.spinner();
-  s.start('Removing secrets...');
+  s.start('Removing credentials...');
 
   try {
-    const results = await Promise.all([
-      deleteSecret('AIC_CLOUDFLARE_ACCOUNT_ID'),
-      deleteSecret('AIC_CLOUDFLARE_API_TOKEN')
-    ]);
+    if (selected === 'all') {
+      await deleteConfig();
+      s.stop(theme.success('All credentials removed'));
+    } else {
+      const providerToRemove = selected as keyof typeof existingConfig.providers;
+      delete existingConfig.providers[providerToRemove];
 
-    const removed = results.filter(Boolean).length;
-    s.stop(theme.success(`Removed ${removed} secret(s)`));
+      // If removing default provider, pick a new default
+      if (existingConfig.defaultProvider === providerToRemove) {
+        const remaining = Object.keys(existingConfig.providers) as Provider[];
+        existingConfig.defaultProvider = remaining[0] ?? 'claude';
+      }
+
+      await setConfig(existingConfig);
+      s.stop(theme.success(`${PROVIDERS[providerToRemove as Provider].name} credentials removed`));
+    }
     p.outro(frappe.subtext1('Done'));
   } catch (err) {
-    s.stop(theme.error('Failed to remove secrets'));
+    s.stop(theme.error('Failed to remove credentials'));
     p.log.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
@@ -196,12 +316,14 @@ if (command === 'setup') {
     process.exit(1);
   }
 } else {
-  // Parse model flag for main command
-  const modelIndex = args.indexOf('--model');
-  const model: ModelType = modelIndex !== -1 ? (args[modelIndex + 1] as ModelType) : 'cloudflare';
+  // Parse provider flag for main command
+  const providerIndex = args.indexOf('--provider');
+  const providerArg = providerIndex !== -1 ? args[providerIndex + 1] : null;
 
-  if (model !== 'cloudflare' && model !== 'claude') {
-    console.error('Invalid --model. Use "cloudflare" (default) or "claude"');
+  // Validate provider if specified
+  const validProviders: Provider[] = ['cloudflare', 'claude', 'anthropic', 'openai'];
+  if (providerArg && !validProviders.includes(providerArg as Provider)) {
+    console.error(`Invalid --provider. Use one of: ${validProviders.join(', ')}`);
     process.exit(1);
   }
 
@@ -212,6 +334,30 @@ if (command === 'setup') {
   async function main() {
     // Show banner
     showBanner();
+
+    // Load configuration
+    const config = await getConfig();
+    const provider: Provider = (providerArg as Provider) ?? config?.defaultProvider ?? 'cloudflare';
+
+    // Validate provider is configured (except claude which needs no credentials)
+    if (provider !== 'claude') {
+      if (!config) {
+        p.outro(theme.error(`No configuration found. Run: aic setup`));
+        process.exit(1);
+      }
+      if (provider === 'cloudflare' && !config.providers.cloudflare) {
+        p.outro(theme.error('Cloudflare not configured. Run: aic setup'));
+        process.exit(1);
+      }
+      if (provider === 'anthropic' && !config.providers.anthropic) {
+        p.outro(theme.error('Anthropic not configured. Run: aic setup'));
+        process.exit(1);
+      }
+      if (provider === 'openai' && !config.providers.openai) {
+        p.outro(theme.error('OpenAI not configured. Run: aic setup'));
+        process.exit(1);
+      }
+    }
 
     // Check if we're in a git repo
     if (!(await isGitRepo())) {
@@ -362,24 +508,29 @@ if (command === 'setup') {
     // Helper to generate commit message with spinner
     async function generateMessage(): Promise<string> {
       const s = p.spinner();
-      s.start(frappe.subtext1(`Generating with ${model}...`));
+      s.start(frappe.subtext1(`Generating with ${provider}...`));
 
       try {
-        const response =
-          model === 'claude'
-            ? await generateWithClaude(prompt)
-            : await generateWithCloudflare(prompt);
+        let response: GenerateResult;
+        switch (provider) {
+          case 'claude':
+            response = await generateWithClaude(prompt);
+            break;
+          case 'anthropic':
+            response = await generateWithAnthropic(prompt, config!);
+            break;
+          case 'openai':
+            response = await generateWithOpenAI(prompt, config!);
+            break;
+          case 'cloudflare':
+          default:
+            response = await generateWithCloudflare(prompt, config!);
+            break;
+        }
         const message = validateMessage(response.text);
         const usage = response.usage;
         if (usage) {
-          const neurons = Math.round(
-            usage.input_tokens * 0.018182 + usage.output_tokens * 0.027273
-          );
-          s.stop(
-            frappe.subtext1(
-              `Done (in: ${usage.input_tokens}, out: ${usage.output_tokens}, ~${neurons} neurons)`
-            )
-          );
+          s.stop(frappe.subtext1(`Done (in: ${usage.input_tokens}, out: ${usage.output_tokens})`));
         } else {
           s.stop(frappe.subtext1('Done'));
         }

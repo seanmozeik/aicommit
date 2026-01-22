@@ -1,11 +1,6 @@
 import type { GenerateResult, SemanticInfo } from '../types.js';
 import { formatSemantics } from './semantic.js';
-
-// Service name for Bun.secrets (UTI format as recommended by Bun docs)
-const SECRETS_SERVICE = 'com.aicommit.cli';
-
-// In-memory cache to avoid multiple keychain prompts per process
-const secretsCache = new Map<string, string | null>();
+import type { SecretsConfig } from './config.js';
 
 // Commit type definitions
 export const COMMIT_TYPES: Record<string, string> = {
@@ -23,109 +18,26 @@ export const COMMIT_TYPES: Record<string, string> = {
 };
 
 /**
- * Get secret from environment or system credential store
- * Uses Bun.secrets for cross-platform support:
- * - macOS: Keychain
- * - Linux: libsecret (GNOME Keyring, KWallet)
- * - Windows: Credential Manager
- */
-async function getSecret(key: string): Promise<string | null> {
-  // 1. Check cache first (avoids multiple keychain prompts)
-  if (secretsCache.has(key)) {
-    return secretsCache.get(key) ?? null;
-  }
-
-  // 2. Check environment variable
-  const envValue = process.env[key];
-  if (envValue) {
-    return envValue;
-  }
-
-  // 3. Try system credential store via Bun.secrets
-  try {
-    const value = await Bun.secrets.get({
-      name: key,
-      service: SECRETS_SERVICE
-    });
-    secretsCache.set(key, value);
-    return value;
-  } catch {
-    // Credential store lookup failed
-    secretsCache.set(key, null);
-    return null;
-  }
-}
-
-/**
- * Store secret in system credential store
- * Uses Bun.secrets for cross-platform support
- */
-export async function setSecret(key: string, value: string): Promise<void> {
-  try {
-    await Bun.secrets.set({
-      name: key,
-      service: SECRETS_SERVICE,
-      value
-    });
-    secretsCache.set(key, value);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (process.platform === 'linux' && msg.includes('libsecret')) {
-      throw new Error(
-        'libsecret not found. Install it with:\n' +
-          '  Ubuntu/Debian: sudo apt install libsecret-1-0\n' +
-          '  Fedora/RHEL:   sudo dnf install libsecret\n' +
-          '  Arch:          sudo pacman -S libsecret\n' +
-          'Or use environment variables instead.'
-      );
-    }
-    throw err;
-  }
-}
-
-/**
- * Delete secret from system credential store
- * Returns true if deleted, false if not found
- */
-export async function deleteSecret(key: string): Promise<boolean> {
-  secretsCache.delete(key);
-  return await Bun.secrets.delete({
-    name: key,
-    service: SECRETS_SERVICE
-  });
-}
-
-/**
- * Get the secrets service name (for external tools)
- */
-export function getSecretsService(): string {
-  return SECRETS_SERVICE;
-}
-
-/**
  * Generate commit message with Cloudflare AI
  */
-export async function generateWithCloudflare(prompt: string): Promise<GenerateResult> {
-  const accountId = await getSecret('AIC_CLOUDFLARE_ACCOUNT_ID');
-  const apiToken = await getSecret('AIC_CLOUDFLARE_API_TOKEN');
-
-  if (!accountId || !apiToken) {
-    throw new Error(
-      'Cloudflare credentials not found. Either:\n' +
-        '  1. Run: aic setup\n' +
-        '  2. Set environment variables: AIC_CLOUDFLARE_ACCOUNT_ID, AIC_CLOUDFLARE_API_TOKEN'
-    );
+export async function generateWithCloudflare(
+  prompt: string,
+  config: SecretsConfig
+): Promise<GenerateResult> {
+  const cloudflare = config.providers.cloudflare;
+  if (!cloudflare) {
+    throw new Error('Cloudflare not configured. Run: aic setup');
   }
 
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/responses`,
+    `https://api.cloudflare.com/client/v4/accounts/${cloudflare.accountId}/ai/v1/responses`,
     {
       body: JSON.stringify({
         input: prompt,
         model: '@cf/openai/gpt-oss-20b'
       }),
       headers: {
-        Authorization: `Bearer ${apiToken}`,
+        Authorization: `Bearer ${cloudflare.apiToken}`,
         'Content-Type': 'application/json'
       },
       method: 'POST'
@@ -158,6 +70,89 @@ export async function generateWithClaude(prompt: string): Promise<GenerateResult
   });
   const text = (await new Response(proc.stdout).text()).trim();
   return { text };
+}
+
+/**
+ * Generate commit message with Anthropic API
+ */
+export async function generateWithAnthropic(
+  prompt: string,
+  config: SecretsConfig
+): Promise<GenerateResult> {
+  const anthropic = config.providers.anthropic;
+  if (!anthropic) {
+    throw new Error('Anthropic not configured. Run: aic setup');
+  }
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': anthropic.apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Anthropic API error: ${error}`);
+  }
+
+  const data = (await response.json()) as {
+    content?: { type: string; text?: string }[];
+    usage?: { input_tokens: number; output_tokens: number };
+  };
+
+  const text = data.content?.find((c) => c.type === 'text')?.text || '';
+  const usage = data.usage;
+  return { text, usage };
+}
+
+/**
+ * Generate commit message with OpenAI API
+ */
+export async function generateWithOpenAI(
+  prompt: string,
+  config: SecretsConfig
+): Promise<GenerateResult> {
+  const openai = config.providers.openai;
+  if (!openai) {
+    throw new Error('OpenAI not configured. Run: aic setup');
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${openai.apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      max_tokens: 256,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI API error: ${error}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+
+  const text = data.choices?.[0]?.message?.content || '';
+  const usage = data.usage
+    ? { input_tokens: data.usage.prompt_tokens, output_tokens: data.usage.completion_tokens }
+    : undefined;
+  return { text, usage };
 }
 
 /**

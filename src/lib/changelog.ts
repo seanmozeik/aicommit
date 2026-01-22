@@ -3,6 +3,7 @@ import type { ChangelogEntry, CommitInfo, SemanticInfo } from '../types.js';
 import { generateWithCloudflare } from './ai.js';
 import { classifyFiles, parseUnifiedDiff } from './diff-parser.js';
 import { extractSemantics } from './semantic.js';
+import { getConfig } from './secrets.js';
 
 const CHANGELOG_PATH = 'CHANGELOG.md';
 
@@ -186,7 +187,11 @@ export async function generateChangelog(
   }
 
   const prompt = buildChangelogPrompt(newVersion, commits, diffStats, semantics);
-  const result = await generateWithCloudflare(prompt);
+  const config = await getConfig();
+  if (!config?.providers.cloudflare) {
+    throw new Error('Cloudflare not configured. Run: aic setup');
+  }
+  const result = await generateWithCloudflare(prompt, config);
 
   return cleanChangelogResponse(result.text);
 }

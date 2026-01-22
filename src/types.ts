@@ -34,8 +34,6 @@ export interface GenerateResult {
   };
 }
 
-export type ModelType = 'cloudflare' | 'claude';
-
 export type ReleaseType = 'patch' | 'minor' | 'major';
 
 export type ProjectType = 'node' | 'python' | 'rust' | 'go' | 'elixir' | 'unknown';
