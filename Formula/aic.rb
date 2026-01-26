@@ -1,11 +1,11 @@
 class Aic < Formula
   desc "AI-powered commit message generator using conventional commit format"
   homepage "https://github.com/seanmozeik/AICommit"
-  version "0.3.1"
+  version "0.3.2"
   license "MIT"
 
   url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-#{version}.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "77fa7503a67412783ea2543262011143295be3583282c40a63e1d0bfb774b773"
 
   depends_on "bun"
 
@@ -15,7 +15,10 @@ class Aic < Formula
 
   def install
     libexec.install Dir["*"]
-    (bin/"aic").write_env_script "bun", libexec/"index.js"
+    (bin/"aic").write <<~EOS
+      #!/bin/bash
+      exec bun "#{libexec}/index.js" "$@"
+    EOS
   end
 
   test do
