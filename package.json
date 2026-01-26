@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "@clack/prompts": "^0.11.0",
+    "@clack/prompts": "^1.0.0-alpha.9",
     "boxen": "^8.0.1",
     "figlet": "^1.9.4",
     "gradient-string": "^3.0.0",
@@ -16,6 +16,7 @@
   "name": "aicommit",
   "scripts": {
     "build": "bun build ./src/index.ts --compile --outfile aic --minify",
+    "bundle": "bun build ./src/index.ts --outdir dist --target=bun --minify",
     "dev": "bun run src/index.ts"
   },
   "type": "module",

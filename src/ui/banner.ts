@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path';
 import figlet from 'figlet';
 import gradient from 'gradient-string';
 // Embed font file for Bun standalone executable
@@ -8,14 +9,25 @@ import { gradientColors } from './theme.js';
 // Create custom gradient using Catppuccin Frappe colors
 const bannerGradient = gradient([...gradientColors.banner]);
 
-// Load and register the embedded font
-const fontContent = await Bun.file(fontPath).text();
-figlet.parseFont('ANSI Shadow', fontContent);
+// Lazy font loading for bytecode caching compatibility (no top-level await)
+let fontLoaded = false;
+
+async function ensureFontLoaded(): Promise<void> {
+  if (fontLoaded) return;
+  // In dev: fontPath is absolute. In bundled builds: fontPath is relative
+  // Use Bun.main for runtime path (import.meta.dir returns source dir with bytecode)
+  const resolvedFontPath = fontPath.startsWith('/') ? fontPath : join(dirname(Bun.main), fontPath);
+  const fontContent = await Bun.file(resolvedFontPath).text();
+  figlet.parseFont('ANSI Shadow', fontContent);
+  fontLoaded = true;
+}
 
 /**
  * Display the ASCII art banner with gradient colors
  */
-export function showBanner(): void {
+export async function showBanner(): Promise<void> {
+  await ensureFontLoaded();
+
   const banner = figlet.textSync('AIC', {
     font: 'ANSI Shadow',
     horizontalLayout: 'default'

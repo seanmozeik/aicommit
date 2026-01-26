@@ -179,8 +179,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     if (convention === 'none') {
       await initializeChangelog();
     } else if (convention === 'other') {
-      s.stop(theme.warning('Non-standard changelog detected'));
-      await new Promise((r) => process.stdout.write('', r));
+      s.clear(theme.warning('Non-standard changelog detected'));
       const migrate = await p.confirm({
         message: 'Migrate to Keep a Changelog format?'
       });
@@ -206,8 +205,7 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     p.log.message(theme.info('─'.repeat(50)));
     p.log.message('');
   } catch (err) {
-    s.stop(theme.warning('Changelog generation failed'));
-    await new Promise((r) => process.stdout.write('', r));
+    s.clear(theme.warning('Changelog generation failed'));
     p.log.warn(getErrorMessage(err));
 
     const continueWithout = await p.confirm({
@@ -236,15 +234,12 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
   s.start(`Creating tag ${tagName}...`);
   try {
     await createTag(tagName, `Release ${newVersion}`);
-    s.stop(theme.success(`Tagged ${tagName}`));
+    s.clear(theme.success(`Tagged ${tagName}`));
   } catch (err) {
     s.stop(theme.error('Tag creation failed'));
     p.log.error(getErrorMessage(err));
     process.exit(1);
   }
-
-  // Flush stdout before prompt to prevent spinner artifacts
-  await new Promise((r) => process.stdout.write('', r));
 
   // Offer to push
   const shouldPush = await p.confirm({
@@ -259,16 +254,13 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
   s.start('Pushing...');
   try {
     await pushWithTags();
-    s.stop(theme.success('Pushed to remote'));
+    s.clear(theme.success('Pushed to remote'));
   } catch (err) {
     s.stop(theme.error('Push failed'));
     p.log.error(getErrorMessage(err));
     p.outro(theme.warning(`Released ${tagName} locally. Push manually: git push --follow-tags`));
     process.exit(1);
   }
-
-  // Flush stdout before prompt to prevent spinner artifacts
-  await new Promise((r) => process.stdout.write('', r));
 
   // Run publish scripts if configured
   if (aicConfig?.publish && aicConfig.publish.length > 0) {

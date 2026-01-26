@@ -56,7 +56,7 @@ if (args.includes('--version') || args.includes('-v')) {
 
 // Handle --help flag
 if (args.includes('--help') || args.includes('-h')) {
-  showBanner();
+  await showBanner();
   console.log(`aic v${version} - AI Commit Message Generator\n`);
   console.log('Usage: aic [command] [options]\n');
   console.log('Commands:');
@@ -78,7 +78,7 @@ if (args.includes('--help') || args.includes('-h')) {
 // ============================================================================
 
 async function setupSecrets() {
-  showBanner();
+  await showBanner();
   p.intro(frappe.text('Setup AI Provider'));
 
   // Load existing config to preserve other providers
@@ -198,7 +198,7 @@ async function setupSecrets() {
 // ============================================================================
 
 async function teardownSecrets() {
-  showBanner();
+  await showBanner();
   p.intro(frappe.text('Remove stored credentials'));
 
   const existingConfig = await getConfig();
@@ -288,7 +288,7 @@ if (command === 'setup') {
   // aic release [patch|minor|major]
   const releaseType = args[1] as ReleaseType | undefined;
   if (!releaseType || !['patch', 'minor', 'major'].includes(releaseType)) {
-    showBanner();
+    await showBanner();
     console.log('Usage: aic release <patch|minor|major>');
     console.log('');
     console.log('Examples:');
@@ -299,11 +299,11 @@ if (command === 'setup') {
     console.log('Run "aic release init" to set up release configuration');
     process.exit(1);
   }
-  showBanner();
+  await showBanner();
   interactiveRelease(releaseType);
 } else if (command === 'release-init') {
   // aic release-init - Initialize release configuration
-  showBanner();
+  await showBanner();
   initRelease();
 } else if (command === 'changelog-latest') {
   // Output latest changelog entry to stdout (for use in scripts)
@@ -333,7 +333,7 @@ if (command === 'setup') {
 
   async function main() {
     // Show banner
-    showBanner();
+    await showBanner();
 
     // Load configuration
     const config = await getConfig();
