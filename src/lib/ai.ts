@@ -29,12 +29,12 @@ export async function generateWithCloudflare(
     throw new Error('Cloudflare not configured. Run: aic setup');
   }
 
+  const model = '@cf/qwen/qwen3-30b-a3b-fp8';
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${cloudflare.accountId}/ai/v1/responses`,
+    `https://api.cloudflare.com/client/v4/accounts/${cloudflare.accountId}/ai/run/${model}`,
     {
       body: JSON.stringify({
-        input: prompt,
-        model: '@cf/qwen/qwen3-30b-a3b-fp8'
+        messages: [{ content: prompt, role: 'user' }]
       }),
       headers: {
         Authorization: `Bearer ${cloudflare.apiToken}`,
@@ -50,13 +50,19 @@ export async function generateWithCloudflare(
   }
 
   const data = (await response.json()) as {
-    output?: { type: string; content?: { text?: string }[] }[];
-    usage?: { input_tokens: number; output_tokens: number };
+    result?: {
+      choices?: { message?: { content?: string } }[];
+      usage?: { prompt_tokens: number; completion_tokens: number };
+    };
   };
 
-  const message = data.output?.find((o) => o.type === 'message');
-  const text = message?.content?.[0]?.text || '';
-  const usage = data.usage;
+  const text = data.result?.choices?.[0]?.message?.content || '';
+  const usage = data.result?.usage
+    ? {
+        input_tokens: data.result.usage.prompt_tokens,
+        output_tokens: data.result.usage.completion_tokens
+      }
+    : undefined;
   return { text, usage };
 }
 
