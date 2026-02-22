@@ -34,7 +34,7 @@ export async function generateWithCloudflare(
     {
       body: JSON.stringify({
         input: prompt,
-        model: '@cf/openai/gpt-oss-20b'
+        model: '@cf/qwen/qwen3-30b-a3b-fp8'
       }),
       headers: {
         Authorization: `Bearer ${cloudflare.apiToken}`,

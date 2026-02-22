@@ -179,7 +179,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     if (convention === 'none') {
       await initializeChangelog();
     } else if (convention === 'other') {
-      s.clear(theme.warning('Non-standard changelog detected'));
+      s.stop(theme.warning('Non-standard changelog detected'));
+      s.clear();
       const migrate = await p.confirm({
         message: 'Migrate to Keep a Changelog format?'
       });
@@ -205,7 +206,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
     p.log.message(theme.info('─'.repeat(50)));
     p.log.message('');
   } catch (err) {
-    s.clear(theme.warning('Changelog generation failed'));
+    s.stop(theme.warning('Changelog generation failed'));
+    s.clear();
     p.log.warn(getErrorMessage(err));
 
     const continueWithout = await p.confirm({
@@ -234,7 +236,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
   s.start(`Creating tag ${tagName}...`);
   try {
     await createTag(tagName, `Release ${newVersion}`);
-    s.clear(theme.success(`Tagged ${tagName}`));
+    s.stop(theme.success(`Tagged ${tagName}`));
+    s.clear();
   } catch (err) {
     s.stop(theme.error('Tag creation failed'));
     p.log.error(getErrorMessage(err));
@@ -254,7 +257,8 @@ export async function interactiveRelease(releaseType: ReleaseType): Promise<void
   s.start('Pushing...');
   try {
     await pushWithTags();
-    s.clear(theme.success('Pushed to remote'));
+    s.stop(theme.success('Pushed to remote'));
+    s.clear();
   } catch (err) {
     s.stop(theme.error('Push failed'));
     p.log.error(getErrorMessage(err));

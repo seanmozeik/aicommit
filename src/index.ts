@@ -113,7 +113,7 @@ async function setupSecrets() {
   if (provider === 'cloudflare') {
     const accountId = await p.text({
       message: 'Cloudflare Account ID:',
-      validate: (v) => (v.trim() ? undefined : 'Account ID is required')
+      validate: (v) => (v?.trim() ? undefined : 'Account ID is required')
     });
     if (p.isCancel(accountId)) {
       p.outro(frappe.subtext1('Cancelled'));
@@ -122,7 +122,7 @@ async function setupSecrets() {
 
     const apiToken = await p.password({
       message: 'Cloudflare API Token:',
-      validate: (v) => (v.trim() ? undefined : 'API Token is required')
+      validate: (v) => (v?.trim() ? undefined : 'API Token is required')
     });
     if (p.isCancel(apiToken)) {
       p.outro(frappe.subtext1('Cancelled'));
@@ -136,7 +136,7 @@ async function setupSecrets() {
   } else if (provider === 'anthropic') {
     const apiKey = await p.password({
       message: 'Anthropic API Key:',
-      validate: (v) => (v.trim() ? undefined : 'API Key is required')
+      validate: (v) => (v?.trim() ? undefined : 'API Key is required')
     });
     if (p.isCancel(apiKey)) {
       p.outro(frappe.subtext1('Cancelled'));
@@ -147,7 +147,7 @@ async function setupSecrets() {
   } else if (provider === 'openai') {
     const apiKey = await p.password({
       message: 'OpenAI API Key:',
-      validate: (v) => (v.trim() ? undefined : 'API Key is required')
+      validate: (v) => (v?.trim() ? undefined : 'API Key is required')
     });
     if (p.isCancel(apiKey)) {
       p.outro(frappe.subtext1('Cancelled'));
