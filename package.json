@@ -1,4 +1,7 @@
 {
+  "bin": {
+    "aic": "dist/aic.js"
+  },
   "dependencies": {
     "@clack/prompts": "^1.0.1",
     "boxen": "^8.0.1",
@@ -11,12 +14,18 @@
     "@types/gradient-string": "^1.1.6",
     "typescript": "^5.9.3"
   },
-  "name": "aicommit",
+  "files": [
+    "dist/aic.js"
+  ],
+  "license": "MIT",
+  "name": "@seanmozeik/aicommit",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "bun build ./src/index.ts --compile --outfile aic --minify",
-    "bundle": "bun build ./src/index.ts --outdir dist --target=bun --minify",
+    "build": "bun build ./src/index.ts --target bun --outfile dist/aic.js --minify",
     "dev": "bun run src/index.ts"
   },
   "type": "module",
-  "version": "0.3.6"
+  "version": "0.3.7"
 }
