@@ -174,12 +174,12 @@ export async function generateWithLocal(
   }
 
   const endpoint = local.endpoint.replace(/\/$/, ''); // Remove trailing slash if present
-  const url = `${endpoint}/v1/chat/completions`;
+  const url = `${endpoint}/v1/responses`;
 
   const response = await fetch(url, {
     body: JSON.stringify({
+      input: prompt,
       max_tokens: 256,
-      messages: [{ content: prompt, role: 'user' }],
       model: local.model
     }),
     headers: {
@@ -194,15 +194,18 @@ export async function generateWithLocal(
   }
 
   const data = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
-    usage?: { prompt_tokens: number; completion_tokens: number };
+    output?: Array<{
+      type: string;
+      content?: Array<{
+        type: string;
+        text?: string;
+      }>;
+    }>;
+    usage?: { input_tokens: number; output_tokens: number };
   };
 
-  const text = data.choices?.[0]?.message?.content || '';
-  const usage = data.usage
-    ? { input_tokens: data.usage.prompt_tokens, output_tokens: data.usage.completion_tokens }
-    : undefined;
-  return { text, usage };
+  const text = data.output?.[0]?.content?.[0]?.text || '';
+  return { text, usage: data.usage };
 }
 
 /**
