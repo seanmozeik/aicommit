@@ -1,6 +1,6 @@
 // src/lib/config.ts
 
-export type Provider = 'cloudflare' | 'claude' | 'anthropic' | 'openai';
+export type Provider = 'cloudflare' | 'claude' | 'anthropic' | 'openai' | 'local';
 
 export interface CloudflareCredentials {
   accountId: string;
@@ -15,12 +15,18 @@ export interface OpenAICredentials {
   apiKey: string;
 }
 
+export interface LocalCredentials {
+  endpoint: string;
+  model: string;
+}
+
 export interface SecretsConfig {
   defaultProvider: Provider;
   providers: {
     cloudflare?: CloudflareCredentials;
     anthropic?: AnthropicCredentials;
     openai?: OpenAICredentials;
+    local?: LocalCredentials;
     // claude uses CLI, no credentials stored
   };
 }
@@ -45,6 +51,11 @@ export const PROVIDERS: Record<Provider, ProviderInfo> = {
   cloudflare: {
     description: 'Cloudflare Workers AI',
     name: 'Cloudflare AI',
+    requiresCredentials: true
+  },
+  local: {
+    description: 'Local model server (OpenAI-compatible, e.g., LM Studio)',
+    name: 'Local Model',
     requiresCredentials: true
   },
   openai: {

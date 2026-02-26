@@ -162,6 +162,50 @@ export async function generateWithOpenAI(
 }
 
 /**
+ * Generate commit message with local model (OpenAI-compatible endpoint)
+ */
+export async function generateWithLocal(
+  prompt: string,
+  config: SecretsConfig
+): Promise<GenerateResult> {
+  const local = config.providers.local;
+  if (!local) {
+    throw new Error('Local model not configured. Run: aic setup');
+  }
+
+  const endpoint = local.endpoint.replace(/\/$/, ''); // Remove trailing slash if present
+  const url = `${endpoint}/v1/chat/completions`;
+
+  const response = await fetch(url, {
+    body: JSON.stringify({
+      max_tokens: 256,
+      messages: [{ content: prompt, role: 'user' }],
+      model: local.model
+    }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Local model error: ${error}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+
+  const text = data.choices?.[0]?.message?.content || '';
+  const usage = data.usage
+    ? { input_tokens: data.usage.prompt_tokens, output_tokens: data.usage.completion_tokens }
+    : undefined;
+  return { text, usage };
+}
+
+/**
  * Build the prompt for AI generation
  */
 export function buildPrompt(

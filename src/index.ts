@@ -9,6 +9,7 @@ import {
   generateWithAnthropic,
   generateWithClaude,
   generateWithCloudflare,
+  generateWithLocal,
   generateWithOpenAI,
   validateMessage
 } from './lib/ai.js';
@@ -67,7 +68,7 @@ if (args.includes('--help') || args.includes('-h')) {
   console.log('  release-init       Initialize release configuration');
   console.log('  changelog-latest   Output the latest changelog entry\n');
   console.log('Options:');
-  console.log('  --provider <name>  AI provider (cloudflare|claude|anthropic|openai)');
+  console.log('  --provider <name>  AI provider (cloudflare|claude|anthropic|openai|local)');
   console.log('  --version, -v      Show version number');
   console.log('  --help, -h         Show this help message\n');
   process.exit(0);
@@ -79,105 +80,166 @@ if (args.includes('--help') || args.includes('-h')) {
 
 async function setupSecrets() {
   await showBanner();
-  p.intro(frappe.text('Setup AI Provider'));
+  p.intro(frappe.text('Setup AI Providers'));
 
   // Load existing config to preserve other providers
   const existingConfig = await getConfig();
 
-  // Provider selection
+  // Multi-select providers to configure
   const providerOptions = Object.entries(PROVIDERS).map(([key, info]) => ({
     hint: info.description,
     label: info.name,
     value: key as Provider
   }));
 
-  const selectedProvider = await p.select({
-    message: 'Select provider to configure:',
+  const selectedProviders = await p.multiselect({
+    message: 'Select providers to configure:',
     options: providerOptions
   });
 
-  if (p.isCancel(selectedProvider)) {
+  if (p.isCancel(selectedProviders)) {
     p.outro(frappe.subtext1('Cancelled'));
     process.exit(0);
   }
 
-  const provider = selectedProvider as Provider;
-  const providerInfo = PROVIDERS[provider];
+  const providers = selectedProviders as Provider[];
+  if (providers.length === 0) {
+    p.outro(frappe.subtext1('No providers selected'));
+    process.exit(0);
+  }
 
-  // Collect credentials based on provider
+  // Initialize config
   const newConfig: SecretsConfig = existingConfig ?? {
-    defaultProvider: provider,
+    defaultProvider: providers[0],
     providers: {}
   };
 
-  if (provider === 'cloudflare') {
-    const accountId = await p.text({
-      message: 'Cloudflare Account ID:',
-      validate: (v) => (v?.trim() ? undefined : 'Account ID is required')
-    });
-    if (p.isCancel(accountId)) {
-      p.outro(frappe.subtext1('Cancelled'));
-      process.exit(0);
+  // Collect credentials for each selected provider
+  for (const provider of providers) {
+    const providerInfo = PROVIDERS[provider];
+    const hasExisting =
+      (provider === 'cloudflare' && newConfig.providers.cloudflare) ||
+      (provider === 'anthropic' && newConfig.providers.anthropic) ||
+      (provider === 'openai' && newConfig.providers.openai) ||
+      (provider === 'local' && newConfig.providers.local);
+
+    // If credentials already exist, ask if they want to update
+    if (hasExisting && existingConfig) {
+      const shouldUpdate = await p.confirm({
+        initialValue: false,
+        message: `${providerInfo.name} already configured. Update credentials?`
+      });
+      if (p.isCancel(shouldUpdate)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
+      if (!shouldUpdate) {
+        continue; // Keep existing credentials
+      }
     }
 
-    const apiToken = await p.password({
-      message: 'Cloudflare API Token:',
-      validate: (v) => (v?.trim() ? undefined : 'API Token is required')
-    });
-    if (p.isCancel(apiToken)) {
-      p.outro(frappe.subtext1('Cancelled'));
-      process.exit(0);
-    }
+    if (provider === 'cloudflare') {
+      const accountId = await p.text({
+        message: 'Cloudflare Account ID:',
+        validate: (v) => (v?.trim() ? undefined : 'Account ID is required')
+      });
+      if (p.isCancel(accountId)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
 
-    newConfig.providers.cloudflare = {
-      accountId: accountId.trim(),
-      apiToken: apiToken.trim()
-    };
-  } else if (provider === 'anthropic') {
-    const apiKey = await p.password({
-      message: 'Anthropic API Key:',
-      validate: (v) => (v?.trim() ? undefined : 'API Key is required')
-    });
-    if (p.isCancel(apiKey)) {
-      p.outro(frappe.subtext1('Cancelled'));
-      process.exit(0);
-    }
+      const apiToken = await p.password({
+        message: 'Cloudflare API Token:',
+        validate: (v) => (v?.trim() ? undefined : 'API Token is required')
+      });
+      if (p.isCancel(apiToken)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
 
-    newConfig.providers.anthropic = { apiKey: apiKey.trim() };
-  } else if (provider === 'openai') {
-    const apiKey = await p.password({
-      message: 'OpenAI API Key:',
-      validate: (v) => (v?.trim() ? undefined : 'API Key is required')
-    });
-    if (p.isCancel(apiKey)) {
-      p.outro(frappe.subtext1('Cancelled'));
-      process.exit(0);
-    }
+      newConfig.providers.cloudflare = {
+        accountId: accountId.trim(),
+        apiToken: apiToken.trim()
+      };
+    } else if (provider === 'anthropic') {
+      const apiKey = await p.password({
+        message: 'Anthropic API Key:',
+        validate: (v) => (v?.trim() ? undefined : 'API Key is required')
+      });
+      if (p.isCancel(apiKey)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
 
-    newConfig.providers.openai = { apiKey: apiKey.trim() };
-  } else if (provider === 'claude') {
-    // Validate claude CLI is installed
-    const proc = Bun.spawn({ cmd: ['which', 'claude'], stderr: 'pipe', stdout: 'pipe' });
-    const exitCode = await proc.exited;
-    if (exitCode !== 0) {
-      p.log.error('Claude CLI not found. Install it from: https://claude.ai/download');
-      process.exit(1);
+      newConfig.providers.anthropic = { apiKey: apiKey.trim() };
+    } else if (provider === 'openai') {
+      const apiKey = await p.password({
+        message: 'OpenAI API Key:',
+        validate: (v) => (v?.trim() ? undefined : 'API Key is required')
+      });
+      if (p.isCancel(apiKey)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
+
+      newConfig.providers.openai = { apiKey: apiKey.trim() };
+    } else if (provider === 'local') {
+      const endpoint = await p.text({
+        message: 'Local model endpoint URL (e.g., http://localhost:1234):',
+        validate: (v) => {
+          if (!v?.trim()) return 'Endpoint is required';
+          if (!v.includes('://')) return 'Invalid URL (must include http:// or https://)';
+          return undefined;
+        }
+      });
+      if (p.isCancel(endpoint)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
+
+      const model = await p.text({
+        message: 'Model name (e.g., liquid/lfm2.5-1.2b):',
+        validate: (v) => (v?.trim() ? undefined : 'Model name is required')
+      });
+      if (p.isCancel(model)) {
+        p.outro(frappe.subtext1('Cancelled'));
+        process.exit(0);
+      }
+
+      newConfig.providers.local = {
+        endpoint: endpoint.trim(),
+        model: model.trim()
+      };
+    } else if (provider === 'claude') {
+      // Validate claude CLI is installed
+      const proc = Bun.spawn({ cmd: ['which', 'claude'], stderr: 'pipe', stdout: 'pipe' });
+      const exitCode = await proc.exited;
+      if (exitCode !== 0) {
+        p.log.error('Claude CLI not found. Install it from: https://claude.ai/download');
+        process.exit(1);
+      }
+      p.log.success('Claude CLI found');
     }
-    p.log.success('Claude CLI found');
   }
 
-  // Ask if this should be the default
-  if (existingConfig && existingConfig.defaultProvider !== provider) {
-    const makeDefault = await p.confirm({
-      initialValue: true,
-      message: `Set ${providerInfo.name} as default provider?`
-    });
-    if (!p.isCancel(makeDefault) && makeDefault) {
-      newConfig.defaultProvider = provider;
-    }
-  } else {
-    newConfig.defaultProvider = provider;
+  // Ask for default provider
+  const defaultOptions = providers.map((p) => ({
+    hint: p === newConfig.defaultProvider ? '(current default)' : undefined,
+    label: PROVIDERS[p].name,
+    value: p
+  }));
+
+  const defaultProvider = await p.select({
+    message: 'Select default provider:',
+    options: defaultOptions
+  });
+
+  if (p.isCancel(defaultProvider)) {
+    p.outro(frappe.subtext1('Cancelled'));
+    process.exit(0);
   }
+
+  newConfig.defaultProvider = defaultProvider as Provider;
 
   const s = p.spinner();
   s.start('Saving configuration...');
@@ -185,7 +247,11 @@ async function setupSecrets() {
   try {
     await setConfig(newConfig);
     s.stop(theme.success('Configuration saved'));
-    p.outro(theme.success(`${providerInfo.name} configured! Run aic to generate commit messages.`));
+    p.outro(
+      theme.success(
+        `Providers configured! Default: ${PROVIDERS[newConfig.defaultProvider].name}. Run aic to generate commit messages.`
+      )
+    );
   } catch (err) {
     s.stop(theme.error('Failed to save configuration'));
     p.log.error(err instanceof Error ? err.message : String(err));
@@ -321,7 +387,7 @@ if (command === 'setup') {
   const providerArg = providerIndex !== -1 ? args[providerIndex + 1] : null;
 
   // Validate provider if specified
-  const validProviders: Provider[] = ['cloudflare', 'claude', 'anthropic', 'openai'];
+  const validProviders: Provider[] = ['cloudflare', 'claude', 'anthropic', 'openai', 'local'];
   if (providerArg && !validProviders.includes(providerArg as Provider)) {
     console.error(`Invalid --provider. Use one of: ${validProviders.join(', ')}`);
     process.exit(1);
@@ -355,6 +421,10 @@ if (command === 'setup') {
       }
       if (provider === 'openai' && !config.providers.openai) {
         p.outro(theme.error('OpenAI not configured. Run: aic setup'));
+        process.exit(1);
+      }
+      if (provider === 'local' && !config.providers.local) {
+        p.outro(theme.error('Local model not configured. Run: aic setup'));
         process.exit(1);
       }
     }
@@ -521,6 +591,9 @@ if (command === 'setup') {
             break;
           case 'openai':
             response = await generateWithOpenAI(prompt, cfg as SecretsConfig);
+            break;
+          case 'local':
+            response = await generateWithLocal(prompt, cfg as SecretsConfig);
             break;
           default:
             response = await generateWithCloudflare(prompt, cfg as SecretsConfig);

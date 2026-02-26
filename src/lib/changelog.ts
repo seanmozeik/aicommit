@@ -4,6 +4,7 @@ import {
   generateWithAnthropic,
   generateWithClaude,
   generateWithCloudflare,
+  generateWithLocal,
   generateWithOpenAI
 } from './ai.js';
 import { classifyFiles, parseUnifiedDiff } from './diff-parser.js';
@@ -215,6 +216,12 @@ export async function generateChangelog(
         throw new Error('OpenAI not configured. Run: aic setup');
       }
       result = await generateWithOpenAI(prompt, config);
+      break;
+    case 'local':
+      if (!config.providers.local) {
+        throw new Error('Local model not configured. Run: aic setup');
+      }
+      result = await generateWithLocal(prompt, config);
       break;
     default:
       if (!config.providers.cloudflare) {
