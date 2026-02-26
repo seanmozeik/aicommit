@@ -5,7 +5,7 @@
 rm -rf dist && mkdir -p dist
 
 # Bundle to JS for macOS/Linux (via Homebrew with depends_on "bun")
-bun build ./src/index.ts --outdir dist --target=bun --minify
+bun build ./src/index.ts --outfile dist/aic.js --target=bun --minify
 
 # Build Windows binary (compiled, since no Homebrew)
 bun build ./src/index.ts --compile --target=bun-windows-x64 --outfile dist/aic-windows-x64.exe --minify
@@ -35,8 +35,8 @@ sed -i '' "s/version \".*\"/version \"$VERSION\"/" Formula/aic.rb && \
 sed -i '' "s/sha256 \".*\"/sha256 \"$SHA\"/" Formula/aic.rb
 
 # Copy formula to tap and commit
-cp Formula/aic.rb ~/workspace/tap/Formula/aic.rb && \
-cd ~/workspace/tap && \
+cp Formula/aic.rb ~/dev/tap/Formula/aic.rb && \
+cd ~/dev/tap && \
 git add Formula/aic.rb && \
 git commit -m "aic $(bun -p "require('$OLDPWD/package.json').version")" && \
 git push
