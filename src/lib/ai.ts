@@ -204,7 +204,18 @@ export async function generateWithLocal(
     usage?: { input_tokens: number; output_tokens: number };
   };
 
-  const text = data.output?.[0]?.content?.[0]?.text || '';
+  // Get the last text content from any output item
+  const allContents = data.output || [];
+  let text = '';
+  for (const item of allContents) {
+    if (item.content && Array.isArray(item.content)) {
+      for (const c of item.content) {
+        if ('text' in c && c.text) {
+          text = c.text; // Keep overwriting to get the last one
+        }
+      }
+    }
+  }
   return { text, usage: data.usage };
 }
 
@@ -261,7 +272,13 @@ ${typeDescriptions}
 - Format: type(scope): description OR type: description
 - Focus on WHY not WHAT
 
-IMPORTANT: Reply with ONLY the commit message. No explanations, no preamble, no "Here's", no quotes. Just the commit message starting with the type.`);
+CRITICAL INSTRUCTIONS:
+1. Reply with ONLY the commit message itself
+2. Do NOT include any explanations, reasoning, or commentary
+3. Do NOT start with newlines, blank lines, or whitespace
+4. Do NOT use quotes around your response
+5. Output must begin immediately with the commit type (e.g., "feat:", "fix:")
+6. Your entire output should be exactly one line containing only the commit message`);
 
   return sections.join('\n\n');
 }
@@ -270,8 +287,9 @@ IMPORTANT: Reply with ONLY the commit message. No explanations, no preamble, no 
  * Validate and clean up generated commit message
  */
 export function validateMessage(msg: string): string {
-  const withoutCodeFences = msg
-    .trim()
+  // Strip all leading whitespace including newlines, then remove code fences
+  const cleaned = msg
+    .replace(/^\s+/, '')
     .replace(/^```\w*\n?/, '')
     .replace(/\n?```$/, '');
 
@@ -279,10 +297,18 @@ export function validateMessage(msg: string): string {
   const conventionalPattern =
     /^(feat|fix|refactor|style|docs|test|build|chore|perf|ci|revert)(\(.+?\))?:/;
 
-  const lines = withoutCodeFences
-    .split('\n')
-    .map((line) => line.replace(/^["']|["']$/g, '').trim());
+  const lines = cleaned.split('\n').map((line) => {
+    // Remove leading/trailing quotes and whitespace
+    let l = line.trim();
+    while (l.startsWith('"') || l.endsWith('"')) {
+      l = l.replace(/^"/, '').replace(/"$/, '');
+      l = l.trim();
+    }
+    return l;
+  });
 
-  const commitLine = lines.find((line) => conventionalPattern.test(line)) ?? lines[0];
-  return commitLine.trim();
+  // Filter out empty lines and find the first conventional commit line
+  const validLines = lines.filter((line) => line.length > 0);
+  const commitLine = validLines.find((line) => conventionalPattern.test(line)) ?? validLines[0];
+  return commitLine ? commitLine.trim() : '';
 }
