@@ -27,5 +27,5 @@
     "dev": "bun run src/index.ts"
   },
   "type": "module",
-  "version": "0.3.9"
+  "version": "0.3.10"
 }
