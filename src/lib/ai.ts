@@ -162,7 +162,7 @@ export async function generateWithOpenAI(
 }
 
 /**
- * Generate commit message with local model (OpenAI-compatible endpoint)
+ * Generate commit message with local model (OpenAI-compatible chat completions)
  */
 export async function generateWithLocal(
   prompt: string,
@@ -174,12 +174,12 @@ export async function generateWithLocal(
   }
 
   const endpoint = local.endpoint.replace(/\/$/, ''); // Remove trailing slash if present
-  const url = `${endpoint}/v1/responses`;
+  const url = `${endpoint}/v1/chat/completions`;
 
   const response = await fetch(url, {
     body: JSON.stringify({
-      input: prompt,
       max_tokens: 256,
+      messages: [{ content: prompt, role: 'user' }],
       model: local.model
     }),
     headers: {
@@ -194,29 +194,15 @@ export async function generateWithLocal(
   }
 
   const data = (await response.json()) as {
-    output?: Array<{
-      type: string;
-      content?: Array<{
-        type: string;
-        text?: string;
-      }>;
-    }>;
-    usage?: { input_tokens: number; output_tokens: number };
+    choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens: number; completion_tokens: number };
   };
 
-  // Get the last text content from any output item
-  const allContents = data.output || [];
-  let text = '';
-  for (const item of allContents) {
-    if (item.content && Array.isArray(item.content)) {
-      for (const c of item.content) {
-        if ('text' in c && c.text) {
-          text = c.text; // Keep overwriting to get the last one
-        }
-      }
-    }
-  }
-  return { text, usage: data.usage };
+  const text = data.choices?.[0]?.message?.content || '';
+  const usage = data.usage
+    ? { input_tokens: data.usage.prompt_tokens, output_tokens: data.usage.completion_tokens }
+    : undefined;
+  return { text, usage };
 }
 
 /**

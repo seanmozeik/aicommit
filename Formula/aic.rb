@@ -1,11 +1,11 @@
 class Aic < Formula
   desc "AI-powered commit message generator using conventional commit format"
   homepage "https://github.com/seanmozeik/AICommit"
-  version "0.3.7"
+  version "0.3.9"
   license "MIT"
 
   url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-#{version}.tar.gz"
-  sha256 "07a1ee7904b6eb2fb1cd20949f6aa229f490efdad91c3d7aee2e0c55df5496ec"
+  sha256 "720740c650b4d72b5155f5404a04fe70831bb5885e3a3d54c310b30470a49f43"
 
   depends_on "bun"
 
