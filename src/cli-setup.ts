@@ -10,6 +10,7 @@ import {
   savePreset,
   type Preset,
 } from './secrets';
+import { handleDeletePreset, handleListPresets, handleSetDefault } from './setup-handlers';
 import { showBanner } from './ui/banner';
 import { frappeColors, theme } from './ui/theme';
 
@@ -46,15 +47,7 @@ export const setupCommand = Command.make('setup', {}, () =>
     });
 
     if (action === 'list') {
-      if (existingPresets.length === 0) {
-        p.outro(frappeColors.subtext1('No presets configured'));
-        return;
-      }
-      for (const presetName of existingPresets) {
-        const isDefault = presetName === currentDefault ? ' (default)' : '';
-        p.log.success(`  ${presetName}${isDefault}`);
-      }
-      p.outro(frappeColors.subtext1('Done'));
+      handleListPresets(existingPresets, currentDefault);
       return;
     }
 
@@ -63,26 +56,7 @@ export const setupCommand = Command.make('setup', {}, () =>
         p.outro(theme.error('No presets configured. Add a preset first.'));
         return;
       }
-      const selected = yield* Effect.tryPromise({
-        catch: (error) =>
-          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
-        try: async () => {
-          const result = await p.select({
-            message: 'Select default preset:',
-            options: existingPresets.map((name) => ({
-              hint: name === currentDefault ? '(current default)' : undefined,
-              label: name,
-              value: name,
-            })),
-          });
-          if (typeof result === 'symbol') {
-            throw new TypeError('Cancelled');
-          }
-          return result;
-        },
-      });
-      yield* Effect.tryPromise(() => saveDefaultPreset(selected));
-      p.outro(theme.success(`Default preset set to "${selected}"`));
+      yield* handleSetDefault(existingPresets, currentDefault);
       return;
     }
 
@@ -91,50 +65,7 @@ export const setupCommand = Command.make('setup', {}, () =>
         p.outro(theme.error('No presets configured.'));
         return;
       }
-      const selected = yield* Effect.tryPromise({
-        catch: (error) =>
-          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
-        try: async () => {
-          const result = await p.select({
-            message: 'Select preset to delete:',
-            options: existingPresets.map((name) => ({
-              hint: name === currentDefault ? '(current default)' : undefined,
-              label: name,
-              value: name,
-            })),
-          });
-          if (typeof result === 'symbol') {
-            throw new TypeError('Cancelled');
-          }
-          return result;
-        },
-      });
-      const confirm = yield* Effect.tryPromise({
-        catch: (error) =>
-          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
-        try: async () => {
-          const result = await p.confirm({
-            initialValue: false,
-            message: `Delete preset "${selected}"?`,
-          });
-          if (typeof result === 'symbol') {
-            throw new TypeError('Cancelled');
-          }
-          return result;
-        },
-      });
-      if (!confirm) {
-        p.outro(frappeColors.subtext1('Cancelled'));
-        return;
-      }
-      yield* Effect.tryPromise({
-        catch: (error) =>
-          new Error(
-            `Failed to delete preset: ${error instanceof Error ? error.message : String(error)}`,
-          ),
-        try: () => import('./secrets.js').then((m) => m.deletePreset(selected)),
-      });
-      p.outro(theme.success(`Preset "${selected}" deleted`));
+      yield* handleDeletePreset(existingPresets, currentDefault);
       return;
     }
 
@@ -145,14 +76,14 @@ export const setupCommand = Command.make('setup', {}, () =>
       try: async () => {
         const result = await p.text({
           message: 'Preset name (e.g., openrouter, local, openai):',
-          validate: (v) => {
+          validate: (v): string | undefined => {
             if (v === undefined || v.trim() === '') {
               return 'Preset name is required';
             }
             if (existingPresets.includes(v.trim())) {
               return 'Preset name already exists';
             }
-            return;
+            return undefined;
           },
         });
         if (typeof result === 'symbol') {
@@ -168,14 +99,14 @@ export const setupCommand = Command.make('setup', {}, () =>
       try: async () => {
         const result = await p.text({
           message: 'Base URL (e.g., https://openrouter.ai/api/v1, http://localhost:1234/v1):',
-          validate: (v) => {
+          validate: (v): string | undefined => {
             if (v === undefined || v.trim() === '') {
               return 'Base URL is required';
             }
             if (!v.includes('://')) {
               return 'Invalid URL (must include http:// or https://)';
             }
-            return;
+            return undefined;
           },
         });
         if (typeof result === 'symbol') {
@@ -208,8 +139,12 @@ export const setupCommand = Command.make('setup', {}, () =>
         try: async () => {
           const result = await p.password({
             message: 'API Key:',
-            validate: (v) =>
-              v === undefined || v.trim() === '' ? 'API Key is required' : undefined,
+            validate: (v): string | undefined => {
+              if (v === undefined || v.trim() === '') {
+                return 'API Key is required';
+              }
+              return undefined;
+            },
           });
           if (typeof result === 'symbol') {
             throw new TypeError('Cancelled');
@@ -225,8 +160,12 @@ export const setupCommand = Command.make('setup', {}, () =>
       try: async () => {
         const result = await p.text({
           message: 'Model name (e.g., anthropic/claude-3.5-sonnet, gpt-4o-mini):',
-          validate: (v) =>
-            v === undefined || v.trim() === '' ? 'Model name is required' : undefined,
+          validate: (v): string | undefined => {
+            if (v === undefined || v.trim() === '') {
+              return 'Model name is required';
+            }
+            return undefined;
+          },
         });
         if (typeof result === 'symbol') {
           throw new TypeError('Cancelled');

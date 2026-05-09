@@ -35,7 +35,7 @@ const frappe = {
 
 const fg = (cssColor: string, text: string): string => {
   const open = Bun.color(cssColor, 'ansi');
-  if (open === undefined || open === '') {
+  if (open === '') {
     return text;
   }
   return `${open}${text}${RESET}`;

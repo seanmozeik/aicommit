@@ -110,7 +110,11 @@ const saveDefaultPreset = async (name: string): Promise<string> => {
 
 const loadDefaultPreset = async (): Promise<string> => {
   const keychain = await readKeychainBlob();
-  return keychain.defaultPreset ?? Object.keys(keychain.presets)[0] ?? '';
+  if (keychain.defaultPreset !== undefined && keychain.defaultPreset !== '') {
+    return keychain.defaultPreset;
+  }
+  const [firstPreset] = Object.keys(keychain.presets);
+  return firstPreset || '';
 };
 
 const deleteSecretBlob = (): Promise<boolean> => {
