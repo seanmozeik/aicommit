@@ -6,17 +6,22 @@ import {
   COMMIT_TYPES,
   buildPrompt,
   generateWithClaude,
+  generateWithCodex,
   generateWithOpenAICompatible,
+  getModelBudgets,
   validateMessage,
 } from './ai.js';
 import type { Preset } from './secrets';
 import type { SemanticInfo } from './types';
 import { frappeColors, theme } from './ui/theme';
 
-export interface GenerationInput {
+type BuiltInPreset = 'claude' | 'codex';
+type GenerationPreset = BuiltInPreset | Preset;
+
+interface GenerationInput {
   compressedDiffs: string;
   fileList: string;
-  presetConfig: Preset | null;
+  presetConfig: GenerationPreset;
   presetName: string;
   recentCommits: string[];
   selectedType: string;
@@ -25,7 +30,22 @@ export interface GenerationInput {
   userInput: string;
 }
 
-export const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
+const generateWithPreset = (
+  prompt: string,
+  presetConfig: GenerationPreset,
+): ReturnType<
+  typeof generateWithClaude | typeof generateWithCodex | typeof generateWithOpenAICompatible
+> => {
+  if (presetConfig === 'claude') {
+    return generateWithClaude(prompt);
+  }
+  if (presetConfig === 'codex') {
+    return generateWithCodex(prompt);
+  }
+  return generateWithOpenAICompatible(prompt, presetConfig);
+};
+
+const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
   Effect.gen(function* generateCommitMessageGen() {
     const {
       compressedDiffs,
@@ -52,9 +72,7 @@ export const generateCommitMessage = (input: GenerationInput): Effect.Effect<str
     const s = p.spinner();
     s.start(frappeColors.subtext1(`Generating with preset "${presetName}"...`));
 
-    const message = yield* presetConfig === null
-      ? generateWithClaude(prompt)
-      : generateWithOpenAICompatible(prompt, presetConfig);
+    const message = yield* generateWithPreset(prompt, presetConfig);
 
     const validated = validateMessage(message);
     s.stop(frappeColors.subtext1('Done'));
@@ -71,6 +89,11 @@ export const generateCommitMessage = (input: GenerationInput): Effect.Effect<str
         p.log.error(`Claude CLI error (exit code ${error.exitCode}): ${error.message}`);
         return Effect.die(error);
       },
+      CodexCliError: (error) => {
+        p.spinner().stop(theme.error('Failed'));
+        p.log.error(`Codex CLI error (exit code ${error.exitCode}): ${error.message}`);
+        return Effect.die(error);
+      },
       OpenAiApiError: (error) => {
         p.spinner().stop(theme.error('Failed'));
         p.log.error(`API error (${error.statusCode}): ${error.message}`);
@@ -79,7 +102,7 @@ export const generateCommitMessage = (input: GenerationInput): Effect.Effect<str
     }),
   );
 
-export const selectCommitType = Effect.gen(function* selectCommitTypeGen() {
+const selectCommitType = Effect.gen(function* selectCommitTypeGen() {
   const typeOptions = [
     { hint: 'Let AI choose the best type', label: 'auto', value: 'auto' },
     ...Object.entries(COMMIT_TYPES).map(([type, desc]) => ({
@@ -109,7 +132,7 @@ export const selectCommitType = Effect.gen(function* selectCommitTypeGen() {
   });
 });
 
-export const selectUserDescription = Effect.gen(function* selectUserDescriptionGen() {
+const selectUserDescription = Effect.gen(function* selectUserDescriptionGen() {
   return yield* Effect.tryPromise({
     catch: (_error) => {
       p.outro(frappeColors.subtext1('Cancelled'));
@@ -128,3 +151,6 @@ export const selectUserDescription = Effect.gen(function* selectUserDescriptionG
     },
   });
 });
+
+export { generateCommitMessage, getModelBudgets, selectCommitType, selectUserDescription };
+export type { BuiltInPreset, GenerationInput, GenerationPreset };

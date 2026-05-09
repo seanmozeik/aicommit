@@ -20,7 +20,7 @@ const changelogExists = (): Promise<boolean> => Bun.file(CHANGELOG_PATH).exists(
 const readChangelog = async (): Promise<string> => {
   const file = Bun.file(CHANGELOG_PATH);
   if (await file.exists()) {
-    return  file.text();
+    return file.text();
   }
   return CHANGELOG_HEADER;
 };
@@ -52,7 +52,9 @@ const extractSection = (content: string, sectionName: string): string[] => {
   const pattern = new RegExp(`### ${sectionName}\\n([\\s\\S]*?)(?=### |$)`, 'iu');
   const match = content.match(pattern);
 
-  if (!match) {return [];}
+  if (!match) {
+    return [];
+  }
 
   return match[1]
     .split('\n')
@@ -102,7 +104,7 @@ const detectChangelogConvention = async (): Promise<'keepachangelog' | 'other' |
   if (
     content.includes('Keep a Changelog') ||
     content.includes('keepachangelog.com') ||
-    (/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}/u.exec(content))
+    /## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}/u.exec(content)
   ) {
     return 'keepachangelog';
   }

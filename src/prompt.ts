@@ -46,15 +46,16 @@ ${typeDescriptions}
 - Max 72 characters
 - Format: type(scope): description OR type: description
 - Focus on WHY not WHAT
-
-CRITICAL INSTRUCTIONS:
-1. Reply with ONLY the commit message itself
-2. Do NOT include any explanations, reasoning, or commentary
-3. Do NOT start with newlines, blank lines, or whitespace
-4. Do NOT use quotes around your response
-5. Output must begin immediately with the commit type (e.g., "feat:", "fix:")
-6. Your entire output should be exactly one line containing only the commit message`;
+- Prefer the current diff over all other context
+- Recent commits are style hints only; do not summarize them instead of the current diff`;
 };
+
+const buildSystemPrompt = (): string =>
+  `You generate exactly one conventional commit subject for the current staged changes.
+
+You must not reveal reasoning, chain-of-thought, alternatives, markdown, or commentary.
+Use the SubmitCommitMessage tool with a single one-line message.
+The message must start with a conventional commit type and must be at most 72 characters.`;
 
 const addUserSelectionSection = (sections: string[], selectedType?: string): void => {
   if (selectedType !== undefined && selectedType !== '' && selectedType !== 'auto') {
@@ -69,7 +70,7 @@ const addRecentCommitsSection = (sections: string[], recentCommits?: readonly st
   if (recentCommits !== undefined && recentCommits.length > 0) {
     const commitList = recentCommits.map((c) => `- ${c}`).join('\n');
     sections.push(
-      `## Recent Project Activity\nThese are the most recent commits in this repository, showing what the developer has been working on. Use this context to better understand how the current changes fit into the ongoing work:\n${commitList}`,
+      `## Low-Priority Style Hints From Recent Commits\nUse these only for tone and scope naming. Never choose a message that describes these commits instead of the current diff:\n${commitList}`,
     );
   }
 };
@@ -102,17 +103,21 @@ const addDiffSection = (sections: string[], compressedDiffs?: string): void => {
   }
 };
 
-export const buildPrompt = (options: BuildPromptOptions): string => {
-  const sections: string[] = ['Generate a conventional commit message.'];
+const buildPrompt = (options: BuildPromptOptions): string => {
+  const sections: string[] = [
+    'Generate one conventional commit message for the current diff below.',
+  ];
 
   addUserSelectionSection(sections, options.selectedType);
-  addRecentCommitsSection(sections, options.recentCommits);
   addUserNoteSection(sections, options.userInput);
   sections.push(`## Stats\n${options.stats}`);
   addCodeChangesSection(sections, options.semantics);
   addFilesSection(sections, options.fileList);
   addDiffSection(sections, options.compressedDiffs);
+  addRecentCommitsSection(sections, options.recentCommits);
   sections.push(buildCommitTypeSection());
 
   return sections.join('\n\n');
 };
+
+export { buildPrompt, buildSystemPrompt };

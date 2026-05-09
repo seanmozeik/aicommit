@@ -7,8 +7,10 @@ import { showActionMenu } from './cli-commit-actions';
 import { selectFilesToStage } from './cli-commit-file-selection';
 import {
   generateCommitMessage,
+  getModelBudgets,
   selectCommitType,
   selectUserDescription,
+  type GenerationPreset,
   type GenerationInput,
 } from './cli-commit-generation.js';
 import { classifyFiles, compressDiffs, parseUnifiedDiff } from './diff-parser';
@@ -21,37 +23,37 @@ import {
   hasHead,
   isGitRepo,
 } from './git.js';
-import { loadDefaultPreset, loadPreset, listPresets, type Preset } from './secrets';
+import { loadDefaultPreset, loadPreset, listPresets } from './secrets';
 import { extractSemantics, formatStats } from './semantic';
 import { showBanner } from './ui/banner';
 import { displayCommitMessage, displayContextPanel } from './ui/context-panel';
 import { frappeColors, theme } from './ui/theme';
 
 const DEFAULT_RECENT_COMMITS_COUNT = 3;
+const NON_DIFF_INPUT_TOKENS = 1500;
+const MIN_DIFF_INPUT_TOKENS = 500;
+const BUILT_IN_PRESETS = ['claude', 'codex'] as const;
+const isBuiltInPreset = (value: string): value is (typeof BUILT_IN_PRESETS)[number] =>
+  BUILT_IN_PRESETS.some((preset) => preset === value);
 
 const validatePreset = (
   preset: Option.Option<string>,
-): Effect.Effect<{ presetConfig: Preset | null; presetName: string }, unknown> =>
+): Effect.Effect<{ presetConfig: GenerationPreset; presetName: string }, unknown> =>
   Effect.gen(function* validatePresetGen() {
     const configDefault = yield* Effect.tryPromise(() => loadDefaultPreset());
     const selectedPreset = Option.getOrElse(preset, () => configDefault);
 
     const presets = yield* Effect.tryPromise(() => listPresets());
-    const allPresets = [...presets, 'claude'];
-    if (presets.length === 0 && !selectedPreset) {
-      p.outro(theme.error('No presets configured. Run: aic setup'));
-      process.exit(1);
-    }
+    const allPresets = [...presets, ...BUILT_IN_PRESETS];
     if (selectedPreset && !allPresets.includes(selectedPreset)) {
       p.outro(theme.error(`Preset "${selectedPreset}" not found. Run: aic setup`));
       process.exit(1);
     }
 
-    const [firstPreset] = presets;
-    const presetName = selectedPreset ?? firstPreset ?? 'claude';
-    const isClaudePreset = presetName === 'claude';
-    const presetConfig = isClaudePreset
-      ? null
+    const firstPreset = presets.at(0);
+    const presetName = selectedPreset === '' ? (firstPreset ?? 'claude') : selectedPreset;
+    const presetConfig = isBuiltInPreset(presetName)
+      ? presetName
       : yield* Effect.tryPromise(() => loadPreset(presetName));
 
     return { presetConfig, presetName };
@@ -153,8 +155,12 @@ const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unkno
     const fileList = buildFileList(classified);
 
     // Extract semantics and compress diffs
+    const { maxInputTokens } = getModelBudgets(
+      typeof presetConfig === 'object' ? presetConfig : null,
+    );
+    const diffTokenBudget = Math.max(MIN_DIFF_INPUT_TOKENS, maxInputTokens - NON_DIFF_INPUT_TOKENS);
     const semantics = extractSemantics(classified.included);
-    const compressedDiffs = compressDiffs(classified.included);
+    const compressedDiffs = compressDiffs(classified.included, { tokenBudget: diffTokenBudget });
     const stats = formatStats(classified, parsed.totalAdditions, parsed.totalDeletions);
     const recentCommits = yield* Effect.tryPromise(() =>
       getRecentCommitMessages(DEFAULT_RECENT_COMMITS_COUNT),

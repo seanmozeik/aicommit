@@ -1,26 +1,68 @@
 import { Effect } from 'effect';
 
+import { generateWithCodex } from './ai-codex';
 import { COMMIT_TYPES } from './commit-types';
 import type { ApiResponseError as ApiResponseErrorClass } from './errors/index';
 import {
   ClaudeCliError as ClaudeCliErrorClass,
   OpenAiApiError as OpenAiApiErrorClass,
 } from './errors/index.js';
-import { buildPrompt } from './prompt';
+import { buildPrompt, buildSystemPrompt } from './prompt';
 import type { Preset } from './secrets';
+import { estimateTokens } from './tokenizer';
 import { validateMessage } from './validation';
 
 // Default AI configuration
 const DEFAULT_TIMEOUT = 30_000;
-const DEFAULT_MAX_TOKENS = 32_000;
-const DEFAULT_TEMPERATURE = 0.2;
+const DEFAULT_CONTEXT_WINDOW = 32_000;
+const INPUT_CONTEXT_FRACTION = 0.25;
+const OUTPUT_CONTEXT_FRACTION = 0.05;
+const MIN_INPUT_TOKENS = 1000;
+const MIN_OUTPUT_TOKENS = 64;
+const BAD_REQUEST_STATUS = 400;
+
+const SUBMIT_COMMIT_MESSAGE_TOOL = {
+  function: {
+    description: 'Submit the final one-line conventional commit message.',
+    name: 'SubmitCommitMessage',
+    parameters: {
+      additionalProperties: false,
+      properties: {
+        message: {
+          description: 'A single conventional commit subject, at most 72 characters.',
+          type: 'string',
+        },
+      },
+      required: ['message'],
+      type: 'object',
+    },
+  },
+  type: 'function',
+} as const;
+
+interface ModelBudgets {
+  readonly contextWindow: number;
+  readonly maxInputTokens: number;
+  readonly maxOutputTokens: number;
+}
+
+const getModelBudgets = (preset: Preset | null): ModelBudgets => {
+  const contextWindow = preset?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+  return {
+    contextWindow,
+    maxInputTokens: Math.max(MIN_INPUT_TOKENS, Math.floor(contextWindow * INPUT_CONTEXT_FRACTION)),
+    maxOutputTokens: Math.max(
+      MIN_OUTPUT_TOKENS,
+      Math.floor(contextWindow * OUTPUT_CONTEXT_FRACTION),
+    ),
+  };
+};
 
 /**
  * Generate commit message with Claude CLI (subprocess call)
  */
 const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErrorClass> =>
   Effect.gen(function* generateWithClaudeGen() {
-    yield* Effect.log('Generating commit message with Claude CLI');
     const proc = Bun.spawn(['claude', '--model', 'haiku', '-p', prompt], {
       stderr: 'pipe',
       stdout: 'pipe',
@@ -34,10 +76,16 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
       try: () => proc.exited,
     });
     if (exitCode !== 0) {
-      yield* Effect.logError(`Claude CLI exited with code ${exitCode}`);
+      const stderr = yield* Effect.promise(async () => {
+        try {
+          return await new Response(proc.stderr).text();
+        } catch {
+          return '';
+        }
+      });
       return yield* new ClaudeCliErrorClass({
         exitCode,
-        message: `Claude CLI exited with code ${exitCode}`,
+        message: stderr.trim() || `Claude CLI exited with code ${exitCode}`,
       });
     }
     const text = yield* Effect.tryPromise({
@@ -49,7 +97,6 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
       try: () => new Response(proc.stdout).text(),
     });
     const trimmed = text.trim();
-    yield* Effect.log('Claude CLI generation completed successfully');
     return trimmed;
   });
 
@@ -59,6 +106,7 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
 const buildApiRequest = (
   prompt: string,
   preset: Preset,
+  options: { readonly reasoningControls?: boolean } = {},
 ): { apiUrl: string; body: string; headers: Record<string, string> } => {
   const cleanBaseUrl = preset.baseUrl.replace(/\/$/u, '');
   const apiUrl = preset.baseUrl.includes('/chat/completions')
@@ -71,11 +119,24 @@ const buildApiRequest = (
     headers['Authorization'] = `Bearer ${preset.apiKey}`;
   }
 
+  const budgets = getModelBudgets(preset);
+
   const body = JSON.stringify({
-    max_tokens: preset.contextWindow ?? DEFAULT_MAX_TOKENS,
-    messages: [{ content: prompt, role: 'user' }],
+    ...(options.reasoningControls === true
+      ? {
+          chat_template_kwargs: { enable_thinking: false },
+          reasoning: { effort: 'none', enabled: false, exclude: true },
+          reasoning_effort: 'none',
+        }
+      : {}),
+    max_tokens: budgets.maxOutputTokens,
+    messages: [
+      { content: buildSystemPrompt(), role: 'system' },
+      { content: prompt, role: 'user' },
+    ],
     model: preset.model,
-    temperature: DEFAULT_TEMPERATURE,
+    tool_choice: { function: { name: SUBMIT_COMMIT_MESSAGE_TOOL.function.name }, type: 'function' },
+    tools: [SUBMIT_COMMIT_MESSAGE_TOOL],
   });
 
   return { apiUrl, body, headers };
@@ -102,33 +163,59 @@ const fetchApiResponse = (request: {
       }),
   });
 
-const validateOpenAiResponse = (json: unknown): { choices: { message: { content: string } }[] } => {
+interface OpenAiMessage {
+  content?: string;
+  tool_calls?: { function?: { arguments?: string; name?: string } }[];
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isOpenAiMessage = (value: unknown): value is OpenAiMessage => {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value['content'] === 'string' ||
+    ('tool_calls' in value && Array.isArray(value['tool_calls']))
+  );
+};
+
+const validateOpenAiResponse = (json: unknown): { choices: { message: OpenAiMessage }[] } => {
   if (
-    typeof json !== 'object' ||
-    json === null ||
+    !isRecord(json) ||
     !('choices' in json) ||
-    !Array.isArray(json.choices) ||
-    json.choices.length === 0
+    !Array.isArray(json['choices']) ||
+    json['choices'].length === 0
   ) {
     throw new Error('Invalid API response structure');
   }
 
-  const { choices } = json as { choices: Record<string, unknown>[] };
-  const [firstChoice] = choices;
-  if (
-    typeof firstChoice !== 'object' ||
-    firstChoice === null ||
-    !('message' in firstChoice) ||
-    typeof firstChoice['message'] !== 'object' ||
-    firstChoice['message'] === null ||
-    !('content' in firstChoice['message']) ||
-    typeof firstChoice['message']['content'] !== 'string'
-  ) {
+  // oxlint-disable-next-line prefer-destructuring
+  const choices: unknown[] = json['choices'];
+  // oxlint-disable-next-line prefer-destructuring
+  const firstChoice = choices[0];
+  const { message } = isRecord(firstChoice) ? firstChoice : { message: undefined };
+  if (!isOpenAiMessage(message)) {
     throw new Error('Invalid API response structure');
   }
 
-  const { message } = firstChoice as { message: { content: string } };
   return { choices: [{ message }] };
+};
+
+const extractToolMessage = (
+  toolCalls: { function?: { arguments?: string; name?: string } }[] | undefined,
+): string | null => {
+  const call = toolCalls?.find((toolCall) => toolCall.function?.name === 'SubmitCommitMessage');
+  const args = call?.function?.arguments;
+  if (args === undefined || args.trim() === '') {
+    return null;
+  }
+  const parsed: unknown = JSON.parse(args);
+  if (isRecord(parsed) && typeof parsed['message'] === 'string') {
+    return parsed['message'].trim();
+  }
+  return null;
 };
 
 const parseApiResponse = (
@@ -136,7 +223,6 @@ const parseApiResponse = (
 ): Effect.Effect<{ content: string }, OpenAiApiErrorClass | ApiResponseErrorClass> =>
   Effect.gen(function* parseApiResponseGen() {
     if (!response.ok) {
-      yield* Effect.logError(`API request failed: ${response.status}`);
       return yield* new OpenAiApiErrorClass({
         error: new Error(`API request failed: ${response.status}`),
         message: `API request failed: ${response.status}`,
@@ -157,9 +243,18 @@ const parseApiResponse = (
       },
     });
 
-    const { content } = data.choices[0].message;
+    const { content, tool_calls: toolCalls } = data.choices[0].message;
+    const toolMessage = yield* Effect.try({
+      catch: (error) =>
+        new OpenAiApiErrorClass({
+          error,
+          message: 'Failed to parse commit-message tool call',
+          statusCode: response.status,
+        }),
+      try: () => extractToolMessage(toolCalls),
+    });
 
-    return { content: content.trim() };
+    return { content: (toolMessage ?? content ?? '').trim() };
   });
 
 const generateWithOpenAICompatible = (
@@ -167,19 +262,24 @@ const generateWithOpenAICompatible = (
   preset: Preset,
 ): Effect.Effect<string, OpenAiApiErrorClass | ApiResponseErrorClass> =>
   Effect.gen(function* generateWithOpenAICompatibleGen() {
-    yield* Effect.log(`Generating commit message with OpenAI-compatible API: ${preset.baseUrl}`);
-    const request = buildApiRequest(prompt, preset);
-    const response = yield* fetchApiResponse(request);
+    const request = buildApiRequest(prompt, preset, { reasoningControls: true });
+    let response = yield* fetchApiResponse(request);
+    if (response.status === BAD_REQUEST_STATUS) {
+      response = yield* fetchApiResponse(buildApiRequest(prompt, preset));
+    }
     const { content } = yield* parseApiResponse(response);
-    yield* Effect.log('OpenAI-compatible API generation completed successfully');
     return content;
   });
 
 export {
   COMMIT_TYPES,
   buildPrompt,
+  estimateTokens,
   generateWithClaude,
+  generateWithCodex,
   generateWithOpenAICompatible,
+  getModelBudgets,
   validateMessage,
 };
+export type { ModelBudgets };
 export type { Preset } from './secrets.js';

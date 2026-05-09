@@ -1,3 +1,4 @@
+import { estimateTokens } from './tokenizer';
 import type { ClassifiedFiles, FileDiff, ParsedDiff } from './types';
 
 // Patterns for files to exclude from diff analysis
@@ -22,9 +23,16 @@ const EXCLUDED_PATTERNS = [
 // Patterns for files that get summary only (no full diff)
 const SUMMARY_ONLY_PATTERNS: RegExp[] = [];
 
-const MAX_LINES_PER_FILE = 50;
-const MAX_TOTAL_DIFF_LINES = 1500;
-const TRUNCATE_HEAD_RATIO = 0.7;
+const MAX_PRIMARY_ADDED_LINES = 80;
+const MAX_PRIMARY_REMOVED_LINES = 24;
+const MAX_PRIMARY_CONTEXT_LINES = 16;
+const MAX_SECONDARY_ADDED_LINES = 32;
+const MAX_SECONDARY_REMOVED_LINES = 8;
+const MAX_SECONDARY_CONTEXT_LINES = 8;
+const MIN_NORMALIZED_FORMATTING_CHARS = 40;
+const PRIORITY_COLUMN_WIDTH = 9;
+const STATUS_COLUMN_WIDTH = 8;
+const STAT_COLUMN_WIDTH = 4;
 
 const parseFileDiff = (fileDiff: string): FileDiff | null => {
   const lines = fileDiff.split('\n');
@@ -119,48 +127,166 @@ const classifyFiles = (files: FileDiff[]): ClassifiedFiles => {
   return { excluded, included, summarized };
 };
 
-/**
- * Truncate a diff to fit within line budget
- */
-const truncateDiff = (diff: string, maxLines: number): string => {
-  const lines = diff.split('\n');
+interface CompressDiffsOptions {
+  readonly tokenBudget?: number;
+}
+
+type FilePriority = 'primary' | 'secondary';
+
+interface DigestLines {
+  readonly added: readonly string[];
+  readonly context: readonly string[];
+  readonly formattingOnly: boolean;
+  readonly removed: readonly string[];
+}
+
+const SECONDARY_FILE_PATTERNS = [
+  /(^|\/)(__tests__|tests?|spec|fixtures?|snapshots?)(\/|$)/iu,
+  /(\.|-)(test|spec)\.[cm]?[jt]sx?$/iu,
+  /\.snap$/iu,
+  /(^|\/)(README|CHANGELOG|LICENSE|docs?)(\.|\/|$)/iu,
+  /(^|\/)(package\.json|tsconfig[^/]*\.json|biome\.json|eslint\.config\.)/iu,
+];
+
+const summarizeFile = (file: FileDiff): string => {
+  const header = file.oldPath === undefined ? file.path : `${file.oldPath} -> ${file.path}`;
+  return `### ${header}\nstatus: ${file.status}\nchanges: +${file.additions}/-${file.deletions}`;
+};
+
+const appendWithinBudget = (
+  diffs: string[],
+  text: string,
+  currentTokens: number,
+  tokenBudget: number,
+): number => {
+  const tokens = estimateTokens(text);
+  if (currentTokens + tokens <= tokenBudget) {
+    diffs.push(text);
+    return currentTokens + tokens;
+  }
+  return currentTokens;
+};
+
+const priorityOf = (file: FileDiff): FilePriority =>
+  SECONDARY_FILE_PATTERNS.some((pattern) => pattern.test(file.path)) ? 'secondary' : 'primary';
+
+const priorityRank = (file: FileDiff): number => (priorityOf(file) === 'primary' ? 0 : 1);
+
+const normalizeChangedLine = (line: string): string => line.replaceAll(/[^\p{L}\p{N}]+/gu, '');
+
+const isLikelyFormattingOnly = (added: readonly string[], removed: readonly string[]): boolean => {
+  const normalizedAdded = added.map((line) => normalizeChangedLine(line)).join('');
+  const normalizedRemoved = removed.map((line) => normalizeChangedLine(line)).join('');
+  return (
+    normalizedAdded.length >= MIN_NORMALIZED_FORMATTING_CHARS &&
+    normalizedAdded === normalizedRemoved
+  );
+};
+
+const formatBlock = (title: string, language: string, lines: readonly string[]): string => {
+  if (lines.length === 0) {
+    return '';
+  }
+  return `${title}:\n\`\`\`${language}\n${lines.join('\n')}\n\`\`\``;
+};
+
+const truncateLines = (
+  lines: readonly string[],
+  maxLines: number,
+  label: string,
+): readonly string[] => {
   if (lines.length <= maxLines) {
-    return diff;
+    return lines;
+  }
+  const omitted = lines.length - maxLines;
+  return [...lines.slice(0, maxLines), `... [${omitted} ${label} lines omitted] ...`];
+};
+
+const digestLines = (file: FileDiff): DigestLines => {
+  const added: string[] = [];
+  const removed: string[] = [];
+  const context: string[] = [];
+
+  for (const line of file.diff.split('\n')) {
+    const isHeader =
+      line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff --git');
+    if (isHeader) {
+      // Header lines are metadata, not evidence for the commit message.
+    } else if (line.startsWith('+')) {
+      added.push(line);
+    } else if (line.startsWith('-')) {
+      removed.push(line);
+    } else if (line.startsWith('@@')) {
+      context.push(line);
+    }
   }
 
-  const headLines = Math.floor(maxLines * TRUNCATE_HEAD_RATIO);
-  const tailLines = maxLines - headLines;
-  const omitted = lines.length - maxLines;
+  return { added, context, formattingOnly: isLikelyFormattingOnly(added, removed), removed };
+};
 
-  return [
-    ...lines.slice(0, headLines),
-    `... [${omitted} lines omitted] ...`,
-    ...lines.slice(-tailLines),
-  ].join('\n');
+const renderFileDigest = (file: FileDiff): string => {
+  const digest = digestLines(file);
+  const priority = priorityOf(file);
+  const maxAdded = priority === 'primary' ? MAX_PRIMARY_ADDED_LINES : MAX_SECONDARY_ADDED_LINES;
+  const maxRemoved =
+    priority === 'primary' ? MAX_PRIMARY_REMOVED_LINES : MAX_SECONDARY_REMOVED_LINES;
+  const maxContext =
+    priority === 'primary' ? MAX_PRIMARY_CONTEXT_LINES : MAX_SECONDARY_CONTEXT_LINES;
+  const sections = [
+    summarizeFile(file),
+    `priority: ${priority}`,
+    digest.formattingOnly
+      ? 'note: changed lines normalize to the same content; likely formatting/reflow noise'
+      : '',
+    formatBlock('Added lines', 'diff', truncateLines(digest.added, maxAdded, 'added')),
+    formatBlock(
+      'Removed/replaced line evidence',
+      'diff',
+      truncateLines(digest.removed, maxRemoved, 'removed'),
+    ),
+    formatBlock('Hunk anchors', 'diff', truncateLines(digest.context, maxContext, 'context')),
+  ];
+  return sections.filter((section) => section !== '').join('\n\n');
+};
+
+const buildChangeOverview = (files: FileDiff[]): string => {
+  const rows = files.map((file) => {
+    const path = file.oldPath === undefined ? file.path : `${file.oldPath} -> ${file.path}`;
+    const priority = priorityOf(file);
+    return `- ${priority.padEnd(PRIORITY_COLUMN_WIDTH)} ${file.status.padEnd(STATUS_COLUMN_WIDTH)} +${String(file.additions).padStart(STAT_COLUMN_WIDTH)} -${String(file.deletions).padStart(STAT_COLUMN_WIDTH)} ${path}`;
+  });
+  return ['## Change Overview', 'priority status   +add -del path', ...rows].join('\n');
 };
 
 /**
- * Compress diffs to fit within token budget
+ * Compress diffs to fit within the input budget reserved for code changes.
  */
-const compressDiffs = (files: FileDiff[]): string => {
-  const diffs: string[] = [];
-  let totalLines = 0;
+const compressDiffs = (files: FileDiff[], options: CompressDiffsOptions = {}): string => {
+  const sortedFiles = files.toSorted((a, b) => {
+    const priorityDelta = priorityRank(a) - priorityRank(b);
+    return priorityDelta === 0
+      ? b.additions + b.deletions - (a.additions + a.deletions)
+      : priorityDelta;
+  });
+  const diffs: string[] = [buildChangeOverview(sortedFiles)];
+  let totalTokens = estimateTokens(diffs[0] ?? '');
+  const tokenBudget = options.tokenBudget ?? Number.POSITIVE_INFINITY;
 
-  for (const file of files) {
+  for (const file of sortedFiles) {
     if (file.status === 'deleted') {
-      diffs.push(`--- ${file.path} (deleted)`);
+      totalTokens = appendWithinBudget(diffs, summarizeFile(file), totalTokens, tokenBudget);
     } else {
-      const remainingBudget = MAX_TOTAL_DIFF_LINES - totalLines;
-      const fileBudget = Math.min(MAX_LINES_PER_FILE, remainingBudget);
-
-      if (fileBudget <= 0) {
-        diffs.push(`--- ${file.path} (omitted)`);
+      const rendered = renderFileDigest(file);
+      if (totalTokens + estimateTokens(rendered) > tokenBudget) {
+        totalTokens = appendWithinBudget(
+          diffs,
+          `${summarizeFile(file)}\npriority: ${priorityOf(file)}\nnote: detailed line digest omitted because the model context budget was exhausted`,
+          totalTokens,
+          tokenBudget,
+        );
       } else {
-        const truncated = truncateDiff(file.diff, fileBudget);
-        totalLines += truncated.split('\n').length;
-
-        const header = file.oldPath === undefined ? file.path : `${file.oldPath} -> ${file.path}`;
-        diffs.push(`--- ${header}\n${truncated}`);
+        totalTokens += estimateTokens(rendered);
+        diffs.push(rendered);
       }
     }
   }

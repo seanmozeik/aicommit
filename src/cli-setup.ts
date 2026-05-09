@@ -18,7 +18,7 @@ export const setupCommand = Command.make('setup', {}, () =>
     showBanner();
     p.intro(frappeColors.text('Setup AI Presets'));
     p.note(
-      'Built-in presets: claude (requires Claude CLI installed)\nUse --preset claude or set it as default',
+      'Built-in presets: claude (requires Claude CLI), codex (requires Codex CLI)\nUse --preset claude or --preset codex without setup',
       'Info',
     );
 

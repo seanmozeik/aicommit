@@ -36,6 +36,7 @@
     "@effect/platform-bun": "beta",
     "boxen": "^8.0.1",
     "effect": "beta",
+    "gpt-tokenizer": "^3.4.0",
     "gradient-string": "^3.0.0"
   },
   "devDependencies": {

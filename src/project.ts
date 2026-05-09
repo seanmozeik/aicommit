@@ -99,7 +99,9 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
     },
     files: ['Cargo.toml'],
     updateVersion: (content, newVersion) => {
-      const packageSection = /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u.exec(content);
+      const packageSection = /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u.exec(
+        content,
+      );
       if (packageSection) {
         return content.replace(
           /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u,
