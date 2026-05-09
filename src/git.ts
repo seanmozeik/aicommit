@@ -188,16 +188,18 @@ export const parseStatusOutput = (
  * Create a git tag
  */
 export const createTag = async (tag: string, message?: string): Promise<void> => {
+  const versionTag = tag.startsWith('v') ? tag : `v${tag}`;
   await (message === undefined
-    ? $`git tag ${tag}`.quiet()
-    : $`git tag -a ${tag} -m ${message}`.quiet());
+    ? $`git tag ${versionTag}`.quiet()
+    : $`git tag -a ${versionTag} -m ${message}`.quiet());
 };
 
 /**
  * Delete a git tag (local only)
  */
 export const deleteTag = async (tag: string): Promise<void> => {
-  await $`git tag -d ${tag}`.quiet();
+  const versionTag = tag.startsWith('v') ? tag : `v${tag}`;
+  await $`git tag -d ${versionTag}`.quiet();
 };
 
 /**
@@ -205,7 +207,8 @@ export const deleteTag = async (tag: string): Promise<void> => {
  */
 export const tagExists = async (tag: string): Promise<boolean> => {
   try {
-    const output = await $`git tag -l ${tag}`.text();
+    const versionTag = tag.startsWith('v') ? tag : `v${tag}`;
+    const output = await $`git tag -l ${versionTag}`.text();
     return output.trim().length > 0;
   } catch {
     return false;

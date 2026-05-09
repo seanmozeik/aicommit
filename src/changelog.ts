@@ -135,7 +135,7 @@ const getCommitsSince = async (fromRef: string | null): Promise<CommitInfo[]> =>
       fromRef === null
         ? await $`git log --oneline`.text()
         : await $`git log ${fromRef}..HEAD --oneline`.text();
-    return output
+    const commits = output
       .trim()
       .split('\n')
       .filter(Boolean)
@@ -151,6 +151,7 @@ const getCommitsSince = async (fromRef: string | null): Promise<CommitInfo[]> =>
           type: match?.at(COMMIT_TYPE_GROUP),
         };
       });
+    return commits;
   } catch {
     return [];
   }
@@ -241,11 +242,23 @@ const generateAiChangelog = (
       throw new Error('Changelog generation requires a configured OpenAI-compatible preset.');
     }
 
-    const preset = yield* Effect.tryPromise(() => loadPreset(presetName));
-    const markdown = yield* generateChangelogWithOpenAICompatible(
-      buildChangelogPrompt(newVersion, commits, diffStats, semantics),
-      preset,
-    );
+    const preset = yield* Effect.tryPromise({
+      catch: (error) => {
+        throw new Error(
+          `Failed to load preset "${presetName}": ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+      try: () => loadPreset(presetName),
+    });
+    const prompt = buildChangelogPrompt(newVersion, commits, diffStats, semantics);
+    const markdown = yield* Effect.tryPromise({
+      catch: (error) => {
+        throw new Error(
+          `AI generation failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+      try: () => Effect.runPromise(generateChangelogWithOpenAICompatible(prompt, preset)),
+    });
     if (markdown.trim() === '') {
       throw new Error('Changelog model returned an empty changelog.');
     }

@@ -90,9 +90,14 @@ const interactiveRelease = (
     if (!(yield* Effect.tryPromise(() => Bun.file('CHANGELOG.md').exists()))) {
       yield* Effect.tryPromise(() => initializeChangelog());
     }
-    const changelogBody = yield* Effect.tryPromise(() =>
-      generateChangelog(newVersion, latestTag, presetName),
-    );
+    const changelogBody = yield* Effect.tryPromise({
+      catch: (error) => {
+        throw new Error(
+          `Changelog generation failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+      try: () => generateChangelog(newVersion, latestTag, presetName),
+    });
     const entry = formatChangelogEntry(newVersion, changelogBody);
     yield* Effect.tryPromise(() => writeChangelog(entry));
     log.success('Updated changelog');
@@ -141,7 +146,12 @@ const interactiveRelease = (
     }
 
     outro(theme.success(`Release ${newVersion} complete!`));
-  });
+  }).pipe(
+    Effect.onInterrupt(() => {
+      outro(theme.warning('Release cancelled'));
+      return Effect.void;
+    }),
+  );
 
 const initRelease = Effect.gen(function* initReleaseGen() {
   intro(theme.primary('🔧 Release Configuration'));
@@ -164,13 +174,7 @@ const initRelease = Effect.gen(function* initReleaseGen() {
 const releaseCommand = Command.make('release', {
   preset: presetFlag,
   releaseType: releaseTypeArg,
-}).pipe(
-  Command.withHandler(({ preset, releaseType }) =>
-    Effect.gen(function* releaseHandler() {
-      yield* interactiveRelease(releaseType, preset);
-    }),
-  ),
-);
+}).pipe(Command.withHandler(({ preset, releaseType }) => interactiveRelease(releaseType, preset)));
 
 const releaseInitCommand = Command.make('release-init').pipe(
   Command.withHandler(() =>

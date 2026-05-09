@@ -29,7 +29,7 @@ const SUBMIT_CHANGELOG_TOOL = {
 } as const;
 
 const CHANGELOG_SYSTEM_PROMPT =
-  'You write concise Keep a Changelog release notes. Do not include the version heading or date. Use the SubmitChangelog tool only.';
+  'Use the SubmitChangelog tool with the Keep a Changelog markdown body (no version heading or date).';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -110,14 +110,22 @@ const extractChangelogMarkdown = async (response: Response): Promise<string> => 
     isRecord(toolCall) && isRecord(toolCall['function'])
       ? toolCall['function']['arguments']
       : undefined;
-  if (typeof args !== 'string' || args.trim() === '') {
-    throw new Error('Changelog model did not call SubmitChangelog');
-  }
-  const parsed: unknown = JSON.parse(args);
-  if (!isRecord(parsed) || typeof parsed['markdown'] !== 'string') {
+  const content =
+    isRecord(message) && typeof message['content'] === 'string' ? message['content'] : undefined;
+
+  if (typeof args === 'string' && args.trim() !== '') {
+    const parsed: unknown = JSON.parse(args);
+    if (isRecord(parsed) && typeof parsed['markdown'] === 'string') {
+      return parsed['markdown'].trim();
+    }
     throw new Error('Invalid SubmitChangelog payload');
   }
-  return parsed['markdown'].trim();
+
+  if (typeof content === 'string' && content.trim() !== '') {
+    return content.trim();
+  }
+
+  throw new Error('Changelog model did not call SubmitChangelog and returned no content');
 };
 
 export const generateChangelogWithOpenAICompatible = (
