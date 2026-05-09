@@ -60,14 +60,14 @@ export async function getStagedFiles(): Promise<string[]> {
  * Get staged diff
  */
 export async function getStagedDiff(): Promise<string> {
-  return await $`git diff --cached --diff-algorithm=minimal`.text();
+  return $`git diff --cached --diff-algorithm=minimal`.text();
 }
 
 /**
  * Get diff against HEAD
  */
 export async function getHeadDiff(): Promise<string> {
-  return await $`git diff HEAD --diff-algorithm=minimal`.text();
+  return $`git diff HEAD --diff-algorithm=minimal`.text();
 }
 
 /**
@@ -85,8 +85,10 @@ export async function getSubmodulePaths(): Promise<Set<string>> {
   try {
     const output = (await $`git config --file .gitmodules --get-regexp path`.quiet()).text();
     for (const line of output.split('\n').filter(Boolean)) {
-      const match = line.match(/submodule\..*\.path\s+(.+)/);
-      if (match) paths.add(match[1]);
+      const match = /submodule\..*\.path\s+(.+)/.exec(line);
+      if (match) {
+        paths.add(match[1]);
+      }
     }
   } catch {
     // No .gitmodules or no submodules configured
@@ -143,31 +145,31 @@ export async function getRecentCommitMessages(count: number = 3): Promise<string
  * Derive a human-readable hint from git status code
  */
 function getStatusHint(status: string): string {
-  if (status === '??') return 'new';
-  if (status.includes('M')) return 'modified';
-  if (status.includes('D')) return 'deleted';
+  if (status === '??') {
+    return 'new';
+  }
+  if (status.includes('M')) {
+    return 'modified';
+  }
+  if (status.includes('D')) {
+    return 'deleted';
+  }
   return status.trim();
 }
 
 /**
  * Parse changed files from porcelain status output
  */
-export function parseStatusOutput(statusOutput: string): Array<{
-  path: string;
-  status: string;
-  hint: string;
-}> {
+export function parseStatusOutput(
+  statusOutput: string,
+): { path: string; status: string; hint: string }[] {
   return statusOutput
     .split('\n')
     .filter(Boolean)
     .map((line) => {
       const status = line.slice(0, 2);
       const path = line.slice(2).trimStart();
-      return {
-        hint: getStatusHint(status),
-        path,
-        status
-      };
+      return { hint: getStatusHint(status), path, status };
     });
 }
 
@@ -247,7 +249,7 @@ export async function getCommitsSince(ref: string): Promise<string> {
     return await $`git log ${ref}..HEAD --oneline`.text();
   } catch {
     // If ref doesn't exist, return all commits
-    return await $`git log --oneline`.text();
+    return $`git log --oneline`.text();
   }
 }
 

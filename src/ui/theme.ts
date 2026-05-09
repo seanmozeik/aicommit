@@ -1,8 +1,11 @@
-import pc from 'picocolors';
+/* Catppuccin Frappé theme using Bun's built-in color functions */
 
-// Catppuccin Frappe palette
-// https://github.com/catppuccin/catppuccin
-const palette = {
+const ESC = '\u001B';
+const RESET = `${ESC}[0m`;
+const BOLD_ON = `${ESC}[1m`;
+
+// Catppuccin Frappé palette
+const frappe = {
   base: '#303446',
   blue: '#8caaee',
   crust: '#232634',
@@ -28,135 +31,86 @@ const palette = {
   surface2: '#626880',
   teal: '#81c8be',
   text: '#c6d0f5',
-  yellow: '#e5c890'
+  yellow: '#e5c890',
 } as const;
 
-// ANSI 256-color approximations for Catppuccin Frappe
-// These are the closest matches in the 256-color palette
-const ansi = {
-  base: 236,
-  blue: 111,
-  crust: 234,
-  flamingo: 217,
-  green: 150,
-  lavender: 147,
-  mantle: 235,
-  maroon: 217,
-  mauve: 183,
-  overlay0: 60,
-  overlay1: 103,
-  overlay2: 103,
-  peach: 216,
-  pink: 218,
-  red: 210,
-  rosewater: 224,
-  sapphire: 110,
-  sky: 117,
-  subtext0: 146,
-  subtext1: 146,
-  surface0: 59,
-  surface1: 59,
-  surface2: 60,
-  teal: 116,
-  text: 189,
-  yellow: 223
-} as const;
+const fg = (cssColor: string, text: string): string => {
+  const open = Bun.color(cssColor, 'ansi') ?? '';
+  if (open === '') {
+    return text;
+  }
+  return `${open}${text}${RESET}`;
+};
 
-// Color functions using ANSI 256 colors
-function ansiColor(code: number): (text: string) => string {
-  return (text: string) => `\x1b[38;5;${code}m${text}\x1b[0m`;
-}
-
-function ansiBg(code: number): (text: string) => string {
-  return (text: string) => `\x1b[48;5;${code}m${text}\x1b[0m`;
-}
+const _boldFg = (cssColor: string, text: string): string => {
+  const rgb = Bun.color(cssColor, '[rgb]');
+  if (!rgb) {
+    return `${BOLD_ON}${text}${RESET}`;
+  }
+  const [r, g, b] = rgb;
+  return `${ESC}[1;38;2;${r};${g};${b}m${text}${RESET}`;
+};
 
 // Theme colors as functions
-export const frappe = {
-  // Base colors
-  base: ansiColor(ansi.base),
-
-  // Background variants
-  bg: {
-    base: ansiBg(ansi.base),
-    surface0: ansiBg(ansi.surface0),
-    surface1: ansiBg(ansi.surface1)
-  },
-  blue: ansiColor(ansi.blue),
-  crust: ansiColor(ansi.crust),
-  flamingo: ansiColor(ansi.flamingo),
-  green: ansiColor(ansi.green),
-  lavender: ansiColor(ansi.lavender),
-  mantle: ansiColor(ansi.mantle),
-  maroon: ansiColor(ansi.maroon),
-  mauve: ansiColor(ansi.mauve),
-  overlay0: ansiColor(ansi.overlay0),
-  overlay1: ansiColor(ansi.overlay1),
-
-  // Overlay colors
-  overlay2: ansiColor(ansi.overlay2),
-  peach: ansiColor(ansi.peach),
-  pink: ansiColor(ansi.pink),
-  red: ansiColor(ansi.red),
-  // Primary accent colors
-  rosewater: ansiColor(ansi.rosewater),
-  sapphire: ansiColor(ansi.sapphire),
-  sky: ansiColor(ansi.sky),
-  subtext0: ansiColor(ansi.subtext0),
-  subtext1: ansiColor(ansi.subtext1),
-  surface0: ansiColor(ansi.surface0),
-  surface1: ansiColor(ansi.surface1),
-
-  // Surface colors
-  surface2: ansiColor(ansi.surface2),
-  teal: ansiColor(ansi.teal),
-
-  // Text colors
-  text: ansiColor(ansi.text),
-  yellow: ansiColor(ansi.yellow)
+export const theme = {
+  accent: (s: string): string => fg(frappe.flamingo, s),
+  added: (s: string): string => fg(frappe.green, s),
+  body: (s: string): string => fg(frappe.subtext1, s),
+  dim: (s: string): string => fg(frappe.surface2, s),
+  error: (s: string): string => fg(frappe.red, s),
+  heading: (s: string): string => fg(frappe.text, s),
+  info: (s: string): string => fg(frappe.blue, s),
+  modified: (s: string): string => fg(frappe.yellow, s),
+  muted: (s: string): string => fg(frappe.overlay1, s),
+  primary: (s: string): string => fg(frappe.mauve, s),
+  removed: (s: string): string => fg(frappe.red, s),
+  secondary: (s: string): string => fg(frappe.pink, s),
+  subtle: (s: string): string => fg(frappe.subtext0, s),
+  success: (s: string): string => fg(frappe.green, s),
+  warning: (s: string): string => fg(frappe.yellow, s),
 } as const;
 
-// Semantic aliases for common use cases
-export const theme = {
-  accent: frappe.flamingo,
-
-  // Diff colors
-  added: frappe.green,
-  body: frappe.subtext1,
-  dim: frappe.surface2,
-  error: frappe.red,
-
-  // Text
-  heading: frappe.text,
-  info: frappe.blue,
-  modified: frappe.yellow,
-  muted: frappe.overlay1,
-
-  // UI elements
-  primary: frappe.mauve,
-  removed: frappe.red,
-  secondary: frappe.pink,
-  subtle: frappe.subtext0,
-  // Status colors
-  success: frappe.green,
-  warning: frappe.yellow
+export const frappeColors = {
+  base: (s: string): string => fg(frappe.base, s),
+  blue: (s: string): string => fg(frappe.blue, s),
+  crust: (s: string): string => fg(frappe.crust, s),
+  flamingo: (s: string): string => fg(frappe.flamingo, s),
+  green: (s: string): string => fg(frappe.green, s),
+  lavender: (s: string): string => fg(frappe.lavender, s),
+  mantle: (s: string): string => fg(frappe.mantle, s),
+  maroon: (s: string): string => fg(frappe.maroon, s),
+  mauve: (s: string): string => fg(frappe.mauve, s),
+  overlay0: (s: string): string => fg(frappe.overlay0, s),
+  overlay1: (s: string): string => fg(frappe.overlay1, s),
+  overlay2: (s: string): string => fg(frappe.overlay2, s),
+  peach: (s: string): string => fg(frappe.peach, s),
+  pink: (s: string): string => fg(frappe.pink, s),
+  red: (s: string): string => fg(frappe.red, s),
+  rosewater: (s: string): string => fg(frappe.rosewater, s),
+  sapphire: (s: string): string => fg(frappe.sapphire, s),
+  sky: (s: string): string => fg(frappe.sky, s),
+  subtext0: (s: string): string => fg(frappe.subtext0, s),
+  subtext1: (s: string): string => fg(frappe.subtext1, s),
+  surface0: (s: string): string => fg(frappe.surface0, s),
+  surface1: (s: string): string => fg(frappe.surface1, s),
+  surface2: (s: string): string => fg(frappe.surface2, s),
+  teal: (s: string): string => fg(frappe.teal, s),
+  text: (s: string): string => fg(frappe.text, s),
+  yellow: (s: string): string => fg(frappe.yellow, s),
 } as const;
 
 // Gradient colors for banner (hex values for gradient-string)
 export const gradientColors = {
-  banner: [palette.mauve, palette.pink, palette.flamingo],
-  error: [palette.red, palette.maroon],
-  success: [palette.green, palette.teal]
+  banner: [frappe.mauve, frappe.pink, frappe.flamingo],
+  error: [frappe.red, frappe.maroon],
+  success: [frappe.green, frappe.teal],
 } as const;
 
 // Box border color (hex for boxen)
 export const boxColors = {
-  default: palette.surface2,
-  error: palette.red,
-  info: palette.blue,
-  primary: palette.mauve,
-  success: palette.green
+  default: frappe.surface2,
+  error: frappe.red,
+  info: frappe.blue,
+  primary: frappe.mauve,
+  success: frappe.green,
 } as const;
-
-// Re-export picocolors for basic formatting
-export { pc };

@@ -28,10 +28,7 @@ export interface ClassifiedFiles {
 
 export interface GenerateResult {
   text: string;
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-  };
+  usage?: { input_tokens: number; output_tokens: number };
 }
 
 export type ReleaseType = 'patch' | 'minor' | 'major';
@@ -42,7 +39,8 @@ export interface ProjectInfo {
   type: ProjectType;
   name: string;
   version: string;
-  metadataFiles: string[]; // Files that contain version info
+  // Files that contain version info
+  metadataFiles: string[];
 }
 
 export interface ChangelogEntry {
@@ -55,15 +53,19 @@ export interface ChangelogEntry {
 }
 
 export interface AicConfig {
-  release?: string[]; // Commands to run during release
-  build?: string[]; // Commands to run during build
-  publish?: string[]; // Commands to run during publish
+  // Commands to run during release
+  release?: string[];
+  // Commands to run during build
+  build?: string[];
+  // Commands to run during publish
+  publish?: string[];
 }
 
 export interface CommitInfo {
   hash: string;
   message: string;
-  type?: string; // feat, fix, etc.
+  // Feat, fix, etc.
+  type?: string;
   scope?: string;
   description?: string;
 }

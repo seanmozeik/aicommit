@@ -1,16 +1,32 @@
 {
+  "$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
+    "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "strict": false,
+    "lib": ["ESNext", "DOM", "ES2024"],
+    "types": ["bun-types"],
+
     "noEmit": true,
-    "resolveJsonModule": true,
     "skipLibCheck": true,
-    "strict": true,
-    "target": "ESNext",
-    "types": ["bun-types"]
+    "isolatedModules": true,
+
+    "noUncheckedIndexedAccess": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": false,
+
+    "outDir": "dist",
+    "rootDir": ".",
+    "incremental": true,
+    "sourceMap": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

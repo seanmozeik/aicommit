@@ -1,31 +1,53 @@
 {
-  "bin": {
-    "aic": "dist/aic.js"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.0.1",
-    "boxen": "^8.0.1",
-    "gradient-string": "^3.0.0",
-    "picocolors": "^1.1.1"
-  },
+  "name": "@seanmozeik/aicommit",
+  "version": "0.4.0",
   "description": "AI Commit Message Generator",
-  "devDependencies": {
-    "@types/bun": "1.3.9",
-    "@types/gradient-string": "^1.1.6",
-    "typescript": "^5.9.3"
+  "license": "MIT",
+  "bin": {
+    "aic": "./dist/aic.js"
   },
   "files": [
-    "dist/aic.js"
+    "dist",
+    "src"
   ],
-  "license": "MIT",
-  "name": "@seanmozeik/aicommit",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --target bun --outfile dist/aic.js --minify",
-    "dev": "bun run src/index.ts"
+    "build": "bun scripts/build.ts",
+    "check": "bun run format && bun run lint:fix && bun run typecheck",
+    "dev": "bun run src/cli.ts",
+    "prepublishOnly": "bun scripts/build.ts -- --no-formula",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "format": "oxfmt --write .",
+    "lint": "oxlint --format agent --tsconfig tsconfig.oxlint.json ./src ./tests ./scripts",
+    "lint:fix": "oxlint --format agent --tsconfig tsconfig.oxlint.json --fix ./src ./tests ./scripts",
+    "prepare": "effect-language-service patch"
   },
-  "type": "module",
-  "version": "0.3.10"
+  "dependencies": {
+    "@clack/prompts": "^1.0.1",
+    "@effect/platform-bun": "beta",
+    "boxen": "^8.0.1",
+    "effect": "beta",
+    "gradient-string": "^3.0.0"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.85.1",
+    "@types/bun": "1.3.9",
+    "@types/gradient-string": "^1.1.6",
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.61.0",
+    "oxlint-tsgolint": "^0.22.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  }
 }
