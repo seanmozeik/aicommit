@@ -11,8 +11,6 @@ import { buildPrompt, buildSystemPrompt } from './prompt';
 import type { Preset } from './secrets';
 import { estimateTokens } from './tokenizer';
 import { validateMessage } from './validation';
-
-// Default AI configuration
 const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CONTEXT_WINDOW = 32_000;
 const INPUT_CONTEXT_FRACTION = 0.25;
@@ -46,21 +44,20 @@ interface ModelBudgets {
   readonly maxOutputTokens: number;
 }
 
-const getModelBudgets = (preset: Preset | null): ModelBudgets => {
+const getModelBudgets = (
+  preset: Preset | null,
+  options: { readonly outputContextFraction?: number } = {},
+): ModelBudgets => {
   const contextWindow = preset?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
   return {
     contextWindow,
     maxInputTokens: Math.max(MIN_INPUT_TOKENS, Math.floor(contextWindow * INPUT_CONTEXT_FRACTION)),
     maxOutputTokens: Math.max(
       MIN_OUTPUT_TOKENS,
-      Math.floor(contextWindow * OUTPUT_CONTEXT_FRACTION),
+      Math.floor(contextWindow * (options.outputContextFraction ?? OUTPUT_CONTEXT_FRACTION)),
     ),
   };
 };
-
-/**
- * Generate commit message with Claude CLI (subprocess call)
- */
 const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErrorClass> =>
   Effect.gen(function* generateWithClaudeGen() {
     const proc = Bun.spawn(['claude', '--model', 'haiku', '-p', prompt], {
@@ -99,14 +96,15 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
     const trimmed = text.trim();
     return trimmed;
   });
-
-/**
- * Generate commit message with OpenAI-compatible API using direct HTTP call
- */
 const buildApiRequest = (
   prompt: string,
   preset: Preset,
-  options: { readonly reasoningControls?: boolean } = {},
+  options: {
+    readonly maxOutputContextFraction?: number;
+    readonly reasoningControls?: boolean;
+    readonly systemPrompt?: string;
+    readonly tool?: typeof SUBMIT_COMMIT_MESSAGE_TOOL;
+  } = {},
 ): { apiUrl: string; body: string; headers: Record<string, string> } => {
   const cleanBaseUrl = preset.baseUrl.replace(/\/$/u, '');
   const apiUrl = preset.baseUrl.includes('/chat/completions')
@@ -119,7 +117,10 @@ const buildApiRequest = (
     headers['Authorization'] = `Bearer ${preset.apiKey}`;
   }
 
-  const budgets = getModelBudgets(preset);
+  const tool = options.tool ?? SUBMIT_COMMIT_MESSAGE_TOOL;
+  const budgets = getModelBudgets(preset, {
+    outputContextFraction: options.maxOutputContextFraction,
+  });
 
   const body = JSON.stringify({
     ...(options.reasoningControls === true
@@ -131,12 +132,12 @@ const buildApiRequest = (
       : {}),
     max_tokens: budgets.maxOutputTokens,
     messages: [
-      { content: buildSystemPrompt(), role: 'system' },
+      { content: options.systemPrompt ?? buildSystemPrompt(), role: 'system' },
       { content: prompt, role: 'user' },
     ],
     model: preset.model,
-    tool_choice: { function: { name: SUBMIT_COMMIT_MESSAGE_TOOL.function.name }, type: 'function' },
-    tools: [SUBMIT_COMMIT_MESSAGE_TOOL],
+    tool_choice: { function: { name: tool.function.name }, type: 'function' },
+    tools: [tool],
   });
 
   return { apiUrl, body, headers };
@@ -203,23 +204,26 @@ const validateOpenAiResponse = (json: unknown): { choices: { message: OpenAiMess
   return { choices: [{ message }] };
 };
 
-const extractToolMessage = (
+const extractToolField = (
   toolCalls: { function?: { arguments?: string; name?: string } }[] | undefined,
+  toolName: string,
+  fieldName: string,
 ): string | null => {
-  const call = toolCalls?.find((toolCall) => toolCall.function?.name === 'SubmitCommitMessage');
+  const call = toolCalls?.find((toolCall) => toolCall.function?.name === toolName);
   const args = call?.function?.arguments;
   if (args === undefined || args.trim() === '') {
     return null;
   }
   const parsed: unknown = JSON.parse(args);
-  if (isRecord(parsed) && typeof parsed['message'] === 'string') {
-    return parsed['message'].trim();
+  if (isRecord(parsed) && typeof parsed[fieldName] === 'string') {
+    return parsed[fieldName].trim();
   }
   return null;
 };
 
 const parseApiResponse = (
   response: Response,
+  options: { readonly toolField?: string; readonly toolName?: string } = {},
 ): Effect.Effect<{ content: string }, OpenAiApiErrorClass | ApiResponseErrorClass> =>
   Effect.gen(function* parseApiResponseGen() {
     if (!response.ok) {
@@ -248,10 +252,15 @@ const parseApiResponse = (
       catch: (error) =>
         new OpenAiApiErrorClass({
           error,
-          message: 'Failed to parse commit-message tool call',
+          message: `Failed to parse ${options.toolName ?? 'SubmitCommitMessage'} tool call`,
           statusCode: response.status,
         }),
-      try: () => extractToolMessage(toolCalls),
+      try: () =>
+        extractToolField(
+          toolCalls,
+          options.toolName ?? SUBMIT_COMMIT_MESSAGE_TOOL.function.name,
+          options.toolField ?? 'message',
+        ),
     });
 
     return { content: (toolMessage ?? content ?? '').trim() };
@@ -271,15 +280,7 @@ const generateWithOpenAICompatible = (
     return content;
   });
 
-export {
-  COMMIT_TYPES,
-  buildPrompt,
-  estimateTokens,
-  generateWithClaude,
-  generateWithCodex,
-  generateWithOpenAICompatible,
-  getModelBudgets,
-  validateMessage,
-};
+export { COMMIT_TYPES, buildPrompt, estimateTokens, generateWithClaude, generateWithCodex };
+export { generateWithOpenAICompatible, getModelBudgets, validateMessage };
 export type { ModelBudgets };
 export type { Preset } from './secrets.js';

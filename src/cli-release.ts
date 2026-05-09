@@ -1,6 +1,6 @@
 /* oxlint-disable import/no-namespace */
 import * as p from '@clack/prompts';
-import { Effect } from 'effect';
+import { Effect, Option } from 'effect';
 import { Argument, Command } from 'effect/unstable/cli';
 
 import {
@@ -15,8 +15,10 @@ import {
   initializeChangelog,
   writeChangelog,
 } from './changelog';
+import { presetFlag } from './cli-flags';
 import { commit, createTag, getLatestTag, isGitRepo, pushWithTags, stageFiles } from './git';
 import { bumpVersion, detectProject, updateProjectVersion } from './project';
+import { loadDefaultPreset } from './secrets';
 import type { ReleaseType } from './types';
 import { theme } from './ui/theme';
 
@@ -33,115 +35,140 @@ const getReleaseMetadataFiles = async (projectFiles: readonly string[]): Promise
   return [...files];
 };
 
-const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
-  p.intro(theme.primary('🚀 Release'));
-
-  const inRepo = await isGitRepo();
-  if (!inRepo) {
-    p.outro(theme.error('Not a git repository'));
-    process.exit(1);
-  }
-
-  const project = await detectProject();
-  if (!project) {
-    p.outro(theme.error('Could not detect project type'));
-    process.exit(1);
-  }
-
-  const latestTag = await getLatestTag();
-  const currentVersion = project.version;
-  const newVersion = bumpVersion(currentVersion, releaseType);
-
-  p.log.info(`Current version: ${currentVersion}`);
-  p.log.info(`New version: ${newVersion}`);
-
-  const confirm = await p.confirm({
-    message: `Bump version from ${currentVersion} to ${newVersion}?`,
+const resolvePresetName = (preset: Option.Option<string>): Effect.Effect<string, unknown> =>
+  Effect.gen(function* resolvePresetNameGen() {
+    if (Option.isSome(preset)) {
+      return preset.value;
+    }
+    return yield* Effect.tryPromise(() => loadDefaultPreset());
   });
 
-  if (confirm === false) {
-    p.outro(theme.warning('Release cancelled'));
-    process.exit(0);
-  }
+const interactiveRelease = (
+  releaseType: ReleaseType,
+  preset: Option.Option<string>,
+): Effect.Effect<void, unknown> =>
+  Effect.gen(function* interactiveReleaseGen() {
+    p.intro(theme.primary('🚀 Release'));
 
-  const config = (await hasAicConfig()) ? await parseAicConfig() : null;
-
-  // Update project version
-  await updateProjectVersion(project, newVersion);
-  p.log.success(`Updated ${project.type} version to ${newVersion}`);
-
-  // Generate changelog
-  if (!(await Bun.file('CHANGELOG.md').exists())) {
-    await initializeChangelog();
-  }
-  const changelogBody = await generateChangelog(newVersion, latestTag);
-  const entry = formatChangelogEntry(newVersion, changelogBody);
-  await writeChangelog(entry);
-  p.log.success('Updated changelog');
-
-  if (config?.release) {
-    const s = p.spinner();
-    const ok = await executeSectionWithProgress('release', config, s);
-    if (!ok) {
-      p.outro(theme.error('Release command failed'));
+    const inRepo = yield* Effect.tryPromise(() => isGitRepo());
+    if (!inRepo) {
+      p.outro(theme.error('Not a git repository'));
       process.exit(1);
     }
-  }
 
-  // Commit changes
-  await stageFiles(await getReleaseMetadataFiles(project.metadataFiles));
-  await commit(`chore(release): ${newVersion}`);
-  p.log.success('Committed version bump and changelog');
+    const project = yield* detectProject();
+    if (!project) {
+      p.outro(theme.error('Could not detect project type'));
+      process.exit(1);
+    }
 
-  // Create tag
-  await createTag(newVersion);
-  p.log.success(`Created tag ${newVersion}`);
+    const latestTag = yield* Effect.tryPromise(() => getLatestTag());
+    const presetName = yield* resolvePresetName(preset);
+    const currentVersion = project.version;
+    const newVersion = bumpVersion(currentVersion, releaseType);
 
-  // Push to remote
-  const shouldPush = await p.confirm({ message: 'Push to remote?' });
+    p.log.info(`Current version: ${currentVersion}`);
+    p.log.info(`New version: ${newVersion}`);
 
-  if (shouldPush === true) {
-    await pushWithTags();
-    p.log.success('Pushed to remote');
-  }
+    const confirm = yield* Effect.tryPromise(() =>
+      p.confirm({ message: `Bump version from ${currentVersion} to ${newVersion}?` }),
+    );
 
-  if (config?.publish) {
-    const shouldPublish = await p.confirm({ message: 'Run publish commands?' });
-    if (shouldPublish === true) {
+    if (confirm === false) {
+      p.outro(theme.warning('Release cancelled'));
+      process.exit(0);
+    }
+
+    const config = (yield* Effect.tryPromise(() => hasAicConfig()))
+      ? yield* Effect.tryPromise(() => parseAicConfig())
+      : null;
+
+    // Update project version
+    yield* updateProjectVersion(project, newVersion);
+    p.log.success(`Updated ${project.type} version to ${newVersion}`);
+
+    // Generate changelog
+    if (!(yield* Effect.tryPromise(() => Bun.file('CHANGELOG.md').exists()))) {
+      yield* Effect.tryPromise(() => initializeChangelog());
+    }
+    const changelogBody = yield* Effect.tryPromise(() =>
+      generateChangelog(newVersion, latestTag, presetName),
+    );
+    const entry = formatChangelogEntry(newVersion, changelogBody);
+    yield* Effect.tryPromise(() => writeChangelog(entry));
+    p.log.success('Updated changelog');
+
+    if (config?.release) {
       const s = p.spinner();
-      const ok = await executeSectionWithProgress('publish', config, s);
+      const ok = yield* Effect.tryPromise(() => executeSectionWithProgress('release', config, s));
       if (!ok) {
-        p.outro(theme.error('Publish command failed'));
+        p.outro(theme.error('Release command failed'));
         process.exit(1);
       }
     }
-  }
 
-  p.outro(theme.success(`Release ${newVersion} complete!`));
-};
+    // Commit changes
+    const releaseMetadataFiles = yield* Effect.tryPromise(() =>
+      getReleaseMetadataFiles(project.metadataFiles),
+    );
+    yield* Effect.tryPromise(() => stageFiles(releaseMetadataFiles));
+    yield* Effect.tryPromise(() => commit(`chore(release): ${newVersion}`));
+    p.log.success('Committed version bump and changelog');
 
-const initRelease = async (): Promise<void> => {
+    // Create tag
+    yield* Effect.tryPromise(() => createTag(newVersion));
+    p.log.success(`Created tag ${newVersion}`);
+
+    // Push to remote
+    const shouldPush = yield* Effect.tryPromise(() => p.confirm({ message: 'Push to remote?' }));
+
+    if (shouldPush === true) {
+      yield* Effect.tryPromise(() => pushWithTags());
+      p.log.success('Pushed to remote');
+    }
+
+    if (config?.publish) {
+      const shouldPublish = yield* Effect.tryPromise(() =>
+        p.confirm({ message: 'Run publish commands?' }),
+      );
+      if (shouldPublish === true) {
+        const s = p.spinner();
+        const ok = yield* Effect.tryPromise(() => executeSectionWithProgress('publish', config, s));
+        if (!ok) {
+          p.outro(theme.error('Publish command failed'));
+          process.exit(1);
+        }
+      }
+    }
+
+    p.outro(theme.success(`Release ${newVersion} complete!`));
+  });
+
+const initRelease = Effect.gen(function* initReleaseGen() {
   p.intro(theme.primary('🔧 Release Configuration'));
 
-  const inRepo = await isGitRepo();
+  const inRepo = yield* Effect.tryPromise(() => isGitRepo());
   if (!inRepo) {
     p.outro(theme.error('Not a git repository'));
     process.exit(1);
   }
 
-  if (await hasAicConfig()) {
+  if (yield* Effect.tryPromise(() => hasAicConfig())) {
     p.outro(theme.warning('.aic already exists'));
     process.exit(0);
   }
 
-  await initAicConfig('.');
+  yield* Effect.tryPromise(() => initAicConfig('.'));
   p.outro(theme.success('Release configuration initialized!'));
-};
+});
 
-const releaseCommand = Command.make('release', { releaseType: releaseTypeArg }).pipe(
-  Command.withHandler(({ releaseType }) =>
+const releaseCommand = Command.make('release', {
+  preset: presetFlag,
+  releaseType: releaseTypeArg,
+}).pipe(
+  Command.withHandler(({ preset, releaseType }) =>
     Effect.gen(function* releaseHandler() {
-      yield* Effect.tryPromise(() => interactiveRelease(releaseType));
+      yield* interactiveRelease(releaseType, preset);
     }),
   ),
 );
@@ -149,7 +176,7 @@ const releaseCommand = Command.make('release', { releaseType: releaseTypeArg }).
 const releaseInitCommand = Command.make('release-init').pipe(
   Command.withHandler(() =>
     Effect.gen(function* releaseInitHandler() {
-      yield* Effect.tryPromise(() => initRelease());
+      yield* initRelease;
     }),
   ),
 );

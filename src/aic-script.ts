@@ -1,9 +1,14 @@
 import type { spinner } from '@clack/prompts';
+import { Effect } from 'effect';
 
 import type { AicConfig } from './types';
 import { theme } from './ui/theme';
 
 const AIC_CONFIG_PATH = '.aic';
+const AIC_SECTIONS = ['ignore', 'release', 'build', 'publish'] as const;
+
+const isAicSection = (value: string): value is keyof AicConfig =>
+  AIC_SECTIONS.some((section) => section === value);
 
 const parseAicContent = (content: string): AicConfig => {
   const config: AicConfig = {};
@@ -21,8 +26,9 @@ const parseAicContent = (content: string): AicConfig => {
         pendingLine = '';
 
         const sectionMatch = /^\[(\w+)\]$/u.exec(fullLine);
-        if (sectionMatch) {
-          currentSection = sectionMatch[1] as keyof AicConfig;
+        const section = sectionMatch?.[1];
+        if (section !== undefined && isAicSection(section)) {
+          currentSection = section;
           config[currentSection] = [];
         } else if (currentSection && config[currentSection]) {
           config[currentSection]?.push(fullLine);
@@ -44,31 +50,45 @@ const parseAicConfig = async (): Promise<AicConfig | null> => {
   return parseAicContent(content);
 };
 
-const hasAicConfig = async (): Promise<boolean> => Bun.file(AIC_CONFIG_PATH).exists();
+const hasAicConfig = (): Promise<boolean> => Bun.file(AIC_CONFIG_PATH).exists();
 
-const executeCommand = async (
+const waitForCommand = (cmd: string): Effect.Effect<number, unknown> =>
+  Effect.tryPromise(async () => {
+    const proc = Bun.spawn({
+      cmd: ['sh', '-c', cmd],
+      stderr: 'inherit',
+      stdin: 'inherit',
+      stdout: 'inherit',
+    });
+    const abort = (): void => {
+      proc.kill('SIGINT');
+    };
+    process.once('SIGINT', abort);
+    try {
+      return await proc.exited;
+    } finally {
+      process.off('SIGINT', abort);
+    }
+  });
+
+const executeCommand = (
   cmd: string,
   options: {
     readonly onError?: (error: string) => void;
     readonly onOutput?: (output: string) => void;
   },
-): Promise<boolean> => {
-  const proc = Bun.spawn({
-    cmd: ['sh', '-c', cmd],
-    stderr: 'inherit',
-    stdin: 'inherit',
-    stdout: 'inherit',
+): Effect.Effect<boolean, unknown> =>
+  Effect.gen(function* executeCommandGen() {
+    const exitCode = yield* waitForCommand(cmd);
+    if (exitCode !== 0) {
+      options.onError?.(`Command exited with code ${exitCode}`);
+      return false;
+    }
+    options.onOutput?.(`Command completed: ${cmd}`);
+    return true;
   });
-  const exitCode = await proc.exited;
-  if (exitCode !== 0) {
-    options.onError?.(`Command exited with code ${exitCode}`);
-    return false;
-  }
-  options.onOutput?.(`Command completed: ${cmd}`);
-  return true;
-};
 
-const executeSection = async (
+const executeSection = (
   section: keyof AicConfig,
   config: AicConfig,
   options: {
@@ -77,67 +97,98 @@ const executeSection = async (
     readonly onCommand?: (cmd: string) => void;
     readonly onOutput?: (output: string) => void;
   } = {},
-): Promise<boolean> => {
-  const commands = config[section];
-  if (!commands || commands.length === 0) {
-    return true;
-  }
-
-  for (const cmd of commands) {
-    options.onCommand?.(cmd);
-
-    if (!options.dryRun) {
-      const success = await executeCommand(cmd, options);
-      if (!success) {
-        return false;
+): Promise<boolean> =>
+  Effect.runPromise(
+    Effect.gen(function* executeSectionGen() {
+      const commands = config[section];
+      if (!commands || commands.length === 0) {
+        return true;
       }
-    }
-  }
 
-  return true;
-};
+      const runCommandAt = (index: number): Effect.Effect<boolean, unknown> =>
+        Effect.gen(function* executeSectionCommand() {
+          if (index >= commands.length) {
+            return true;
+          }
+          const cmd = commands[index];
+          options.onCommand?.(cmd);
+
+          if (options.dryRun !== true) {
+            const success = yield* executeCommand(cmd, options);
+            if (!success) {
+              return false;
+            }
+          }
+          return yield* runCommandAt(index + 1);
+        });
+
+      return yield* runCommandAt(0);
+    }),
+  );
 
 const flushStdout = (): void => {
-  process.stdout.write('', () => null);
+  process.stdout.write('');
 };
 
-const executeSectionWithProgress = async (
-  section: keyof AicConfig,
-  config: AicConfig,
+const runProgressCommand = (
+  cmd: string,
+  index: number,
+  total: number,
   s: ReturnType<typeof spinner>,
-): Promise<boolean> => {
-  const commands = config[section];
-  if (!commands || commands.length === 0) {
-    return true;
-  }
-
-  const total = commands.length;
-  let index = 0;
-
-  for (const cmd of commands) {
-    index += 1;
+): Effect.Effect<boolean, unknown> =>
+  Effect.gen(function* runProgressCommandGen() {
     s.start(`Running command ${index}/${total}...`);
-
     s.stop(`Running command ${index}/${total}: ${cmd}`);
-    const proc = Bun.spawn({
-      cmd: ['sh', '-c', cmd],
-      stderr: 'inherit',
-      stdin: 'inherit',
-      stdout: 'inherit',
-    });
-    const exitCode = await proc.exited;
+    const exitCode = yield* waitForCommand(cmd);
 
     if (exitCode !== 0) {
       s.stop(theme.error(`Command failed: ${cmd}`));
       flushStdout();
       return false;
     }
-  }
+    return true;
+  });
 
-  s.stop(theme.success(`Completed ${total} release command${total > 1 ? 's' : ''}`));
-  flushStdout();
-  return true;
-};
+const executeSectionWithProgress = (
+  section: keyof AicConfig,
+  config: AicConfig,
+  s: ReturnType<typeof spinner>,
+): Promise<boolean> =>
+  Effect.runPromise(
+    Effect.gen(function* executeSectionWithProgressGen() {
+      const commands = config[section];
+      if (!commands || commands.length === 0) {
+        return true;
+      }
+
+      const runCommandAt = (index: number): Effect.Effect<boolean, unknown> =>
+        Effect.gen(function* executeProgressCommand() {
+          if (index >= commands.length) {
+            return true;
+          }
+          const cmd = commands[index];
+          const success = yield* runProgressCommand(cmd, index + 1, commands.length, s);
+          if (!success) {
+            return false;
+          }
+          return yield* runCommandAt(index + 1);
+        });
+
+      const completed = yield* runCommandAt(0);
+
+      if (!completed) {
+        return false;
+      }
+
+      s.stop(
+        theme.success(
+          `Completed ${commands.length} release command${commands.length > 1 ? 's' : ''}`,
+        ),
+      );
+      flushStdout();
+      return true;
+    }),
+  );
 
 const DEFAULT_TEMPLATE = `# AICommit Release Configuration
 # Commands run during release process

@@ -1,6 +1,11 @@
 import { $ } from 'bun';
+import { Effect } from 'effect';
 
-import type { ChangelogEntry } from './types';
+import { generateChangelogWithOpenAICompatible } from './ai-changelog';
+import { classifyFiles, parseUnifiedDiff } from './diff-parser';
+import { loadPreset } from './secrets';
+import { extractSemantics } from './semantic';
+import type { ChangelogEntry, CommitInfo, SemanticInfo } from './types';
 
 const CHANGELOG_PATH = 'CHANGELOG.md';
 const CONVENTIONAL_COMMIT_RE =
@@ -8,9 +13,8 @@ const CONVENTIONAL_COMMIT_RE =
 const COMMIT_TYPE_GROUP = 1;
 const COMMIT_SCOPE_GROUP = 2;
 const COMMIT_DESCRIPTION_GROUP = 3;
-const CHANGELOG_SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed'] as const;
-
-type ChangelogSection = (typeof CHANGELOG_SECTIONS)[number];
+const CHANGELOG_FUNCTION_HINT_LIMIT = 15;
+const CHANGELOG_OTHER_HINT_LIMIT = 10;
 const CHANGELOG_HEADER = `# Changelog
 
 All notable changes to this project will be documented in this file.
@@ -125,67 +129,147 @@ const detectChangelogConvention = async (): Promise<'keepachangelog' | 'other' |
   return 'none';
 };
 
-const getCommitMessagesSince = async (fromRef: string | null): Promise<string[]> => {
+const getCommitsSince = async (fromRef: string | null): Promise<CommitInfo[]> => {
   try {
     const output =
       fromRef === null
-        ? await $`git log --format=%s`.text()
-        : await $`git log ${fromRef}..HEAD --format=%s`.text();
-    return output.trim().split('\n').filter(Boolean);
+        ? await $`git log --oneline`.text()
+        : await $`git log ${fromRef}..HEAD --oneline`.text();
+    return output
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [hash = '', ...messageParts] = line.split(' ');
+        const message = messageParts.join(' ');
+        const match = CONVENTIONAL_COMMIT_RE.exec(message);
+        return {
+          description: match?.at(COMMIT_DESCRIPTION_GROUP),
+          hash,
+          message,
+          scope: match?.at(COMMIT_SCOPE_GROUP),
+          type: match?.at(COMMIT_TYPE_GROUP),
+        };
+      });
   } catch {
     return [];
   }
 };
 
-const formatCommitForChangelog = (message: string): { section: ChangelogSection; text: string } => {
-  const match = CONVENTIONAL_COMMIT_RE.exec(message);
-  if (match === null) {
-    return { section: 'Changed', text: message };
-  }
-
-  const type = match.at(COMMIT_TYPE_GROUP) ?? 'chore';
-  const scope = match.at(COMMIT_SCOPE_GROUP);
-  const description = match.at(COMMIT_DESCRIPTION_GROUP) ?? message;
-  const scoped =
-    scope === undefined || scope.trim() === '' ? description : `${scope}: ${description}`;
-  switch (type) {
-    case 'feat': {
-      return { section: 'Added', text: scoped };
-    }
-    case 'fix': {
-      return { section: 'Fixed', text: scoped };
-    }
-    case 'revert': {
-      return { section: 'Removed', text: scoped };
-    }
-    default: {
-      return { section: 'Changed', text: scoped };
-    }
+const getDiffStatsSince = async (fromRef: string | null): Promise<string> => {
+  try {
+    return fromRef === null
+      ? await $`git diff --stat`.text()
+      : await $`git diff ${fromRef}..HEAD --stat`.text();
+  } catch {
+    return '';
   }
 };
 
-const renderChangelogSections = (sections: Partial<Record<ChangelogSection, string[]>>): string => {
-  const rendered: string[] = [];
-  for (const section of CHANGELOG_SECTIONS) {
-    const sectionEntries = sections[section];
-    const entries = sectionEntries === undefined ? [] : [...new Set(sectionEntries)];
-    if (entries.length > 0) {
-      rendered.push(`### ${section}\n\n${entries.map((entry) => `- ${entry}`).join('\n')}`);
-    }
+const getDiffSince = async (fromRef: string | null): Promise<string> => {
+  try {
+    return fromRef === null
+      ? await $`git diff --diff-algorithm=minimal`.text()
+      : await $`git diff ${fromRef}..HEAD --diff-algorithm=minimal`.text();
+  } catch {
+    return '';
   }
-  return rendered.join('\n\n');
 };
 
-const generateChangelog = async (_newVersion: string, fromRef: string | null): Promise<string> => {
-  const commits = await getCommitMessagesSince(fromRef);
-  const sections: Partial<Record<ChangelogSection, string[]>> = {};
+const extractChangeSemantics = async (fromRef: string | null): Promise<SemanticInfo> => {
+  const diffOutput = await getDiffSince(fromRef);
+  if (diffOutput.trim() === '') {
+    return { classes: [], exports: [], functions: [], types: [] };
+  }
+  const parsed = parseUnifiedDiff(diffOutput);
+  const classified = classifyFiles(parsed.files);
+  return extractSemantics(classified.included);
+};
 
-  for (const commitMessage of commits) {
-    const { section, text } = formatCommitForChangelog(commitMessage);
-    sections[section] = [...(sections[section] ?? []), text];
+const buildChangelogPrompt = (
+  newVersion: string,
+  commits: readonly CommitInfo[],
+  diffStats: string,
+  semantics: SemanticInfo,
+): string => `Release: ${newVersion}
+
+Write a concise user-facing Keep a Changelog body from the release commits and change context.
+Rules:
+- Include only relevant sections: Added, Changed, Fixed, Removed.
+- Do not include the version heading or date.
+- Merge duplicate or overly similar entries.
+- Make entries user-facing and meaningful.
+- Omit trivial internal noise when it does not affect users.
+- Do not mention file names, function names, or implementation details unless the user impact requires it.
+
+Commits:
+${commits.map((commit) => `- ${commit.message}`).join('\n')}
+
+Diff stats:
+${diffStats.trim() || '(none)'}
+
+Code-change hints:
+${
+  [
+    semantics.functions.length > 0
+      ? `Functions: ${semantics.functions.slice(0, CHANGELOG_FUNCTION_HINT_LIMIT).join(', ')}`
+      : '',
+    semantics.classes.length > 0
+      ? `Classes: ${semantics.classes.slice(0, CHANGELOG_OTHER_HINT_LIMIT).join(', ')}`
+      : '',
+    semantics.types.length > 0
+      ? `Types: ${semantics.types.slice(0, CHANGELOG_OTHER_HINT_LIMIT).join(', ')}`
+      : '',
+    semantics.exports.length > 0
+      ? `Exports: ${semantics.exports.slice(0, CHANGELOG_OTHER_HINT_LIMIT).join(', ')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n') || '(none)'
+}
+`;
+
+const generateAiChangelog = (
+  newVersion: string,
+  commits: readonly CommitInfo[],
+  diffStats: string,
+  semantics: SemanticInfo,
+  presetName: string,
+): Effect.Effect<string, unknown> =>
+  Effect.gen(function* generateAiChangelogGen() {
+    if (presetName === '' || presetName === 'claude' || presetName === 'codex') {
+      throw new Error('Changelog generation requires a configured OpenAI-compatible preset.');
+    }
+
+    const preset = yield* Effect.tryPromise(() => loadPreset(presetName));
+    const markdown = yield* generateChangelogWithOpenAICompatible(
+      buildChangelogPrompt(newVersion, commits, diffStats, semantics),
+      preset,
+    );
+    if (markdown.trim() === '') {
+      throw new Error('Changelog model returned an empty changelog.');
+    }
+    return markdown.trim();
+  });
+
+const generateChangelog = async (
+  newVersion: string,
+  fromRef: string | null,
+  presetName: string,
+): Promise<string> => {
+  const [commits, diffStats, semantics] = await Promise.all([
+    getCommitsSince(fromRef),
+    getDiffStatsSince(fromRef),
+    extractChangeSemantics(fromRef),
+  ]);
+
+  if (commits.length === 0) {
+    throw new Error('No commits found since last release');
   }
 
-  return renderChangelogSections(sections) || '### Changed\n\n- Release maintenance updates';
+  return Effect.runPromise(
+    generateAiChangelog(newVersion, commits, diffStats, semantics, presetName),
+  );
 };
 
 export {
