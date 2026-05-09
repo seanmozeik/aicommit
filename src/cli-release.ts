@@ -19,7 +19,7 @@ import { commit, createTag, getLatestTag, isGitRepo, pushWithTags, stageFiles } 
 import { bumpVersion, detectProject, updateProjectVersion } from './project';
 import { loadDefaultPreset } from './secrets';
 import type { ReleaseType } from './types';
-import { theme } from './ui/theme';
+import { frappeColors, theme } from './ui/theme';
 
 const releaseTypeArg = Argument.choice('type', ['patch', 'minor', 'major'] as const).pipe(
   Argument.withDefault('patch' as const),
@@ -90,14 +90,20 @@ const interactiveRelease = (
     if (!(yield* Effect.tryPromise(() => Bun.file('CHANGELOG.md').exists()))) {
       yield* Effect.tryPromise(() => initializeChangelog());
     }
+    const changelogSpinner = spinner();
+    changelogSpinner.start(
+      frappeColors.subtext1(`Generating changelog with preset "${presetName}"...`),
+    );
     const changelogBody = yield* Effect.tryPromise({
       catch: (error) => {
+        changelogSpinner.stop(theme.error('Failed'));
         throw new Error(
           `Changelog generation failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       },
       try: () => generateChangelog(newVersion, latestTag, presetName),
     });
+    changelogSpinner.stop(frappeColors.subtext1('Done'));
     const entry = formatChangelogEntry(newVersion, changelogBody);
     yield* Effect.tryPromise(() => writeChangelog(entry));
     log.success('Updated changelog');
