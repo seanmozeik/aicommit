@@ -13,13 +13,10 @@ const VERSION_PART_PATCH = 2;
 const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
   elixir: {
     detect: (content) => {
-      const versionMatch = content.match(/version:\s*["']([^"']+)["']/u);
-      const appMatch = content.match(/app:\s*:(\w+)/u);
+      const versionMatch = /version:\s*["']([^"']+)["']/u.exec(content);
+      const appMatch = /app:\s*:(\w+)/u.exec(content);
       if (versionMatch && versionMatch[1]) {
-        return {
-          name: appMatch?.[1] ?? 'unknown',
-          version: versionMatch[1],
-        };
+        return { name: appMatch?.[1] ?? 'unknown', version: versionMatch[1] };
       }
       return null;
     },
@@ -30,8 +27,8 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
   },
   go: {
     detect: (content) => {
-      const moduleMatch = content.match(/module\s+([^\s]+)/u);
-      const versionMatch = content.match(/(?:Version|VERSION)\s*=\s*["']([^"']+)["']/u);
+      const moduleMatch = /module\s+([^\s]+)/u.exec(content);
+      const versionMatch = /(?:Version|VERSION)\s*=\s*["']([^"']+)["']/u.exec(content);
       if (moduleMatch && moduleMatch[1]) {
         return {
           name: moduleMatch[1].split('/').pop() ?? 'unknown',
@@ -42,7 +39,10 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
     },
     files: ['go.mod', 'version.go'],
     updateVersion: (content, newVersion) => {
-      return content.replace(/((?:Version|VERSION)\s*=\s*["'])([^"']+)(["'])/u, `$1${newVersion}$3`);
+      return content.replace(
+        /((?:Version|VERSION)\s*=\s*["'])([^"']+)(["'])/u,
+        `$1${newVersion}$3`,
+      );
     },
   },
   node: {
@@ -66,15 +66,12 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
   },
   python: {
     detect: (content) => {
-      const projectMatch = content.match(/\[project\]\s*[\s\S]*?name\s*=\s*["']([^"']+)["']/u);
-      const versionMatch = content.match(/version\s*=\s*["']([^"']+)["']/u);
+      const projectMatch = /\[project\]\s*[\s\S]*?name\s*=\s*["']([^"']+)["']/u.exec(content);
+      const versionMatch = /version\s*=\s*["']([^"']+)["']/u.exec(content);
       if (versionMatch && versionMatch[1]) {
-        return {
-          name: projectMatch?.[1] ?? 'unknown',
-          version: versionMatch[1],
-        };
+        return { name: projectMatch?.[1] ?? 'unknown', version: versionMatch[1] };
       }
-      const verVarMatch = content.match(/__version__\s*=\s*["']([^"']+)["']/u);
+      const verVarMatch = /__version__\s*=\s*["']([^"']+)["']/u.exec(content);
       if (verVarMatch && verVarMatch[1]) {
         return { name: 'unknown', version: verVarMatch[1] };
       }
@@ -93,21 +90,16 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
   },
   rust: {
     detect: (content) => {
-      const nameMatch = content.match(/\[package\][\s\S]*?name\s*=\s*["']([^"']+)["']/u);
-      const versionMatch = content.match(/\[package\][\s\S]*?version\s*=\s*["']([^"']+)["']/u);
+      const nameMatch = /\[package\][\s\S]*?name\s*=\s*["']([^"']+)["']/u.exec(content);
+      const versionMatch = /\[package\][\s\S]*?version\s*=\s*["']([^"']+)["']/u.exec(content);
       if (versionMatch && versionMatch[1]) {
-        return {
-          name: nameMatch?.[1] ?? 'unknown',
-          version: versionMatch[1],
-        };
+        return { name: nameMatch?.[1] ?? 'unknown', version: versionMatch[1] };
       }
       return null;
     },
     files: ['Cargo.toml'],
     updateVersion: (content, newVersion) => {
-      const packageSection = content.match(
-        /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u,
-      );
+      const packageSection = /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u.exec(content);
       if (packageSection) {
         return content.replace(
           /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u,
@@ -117,11 +109,7 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
       return content;
     },
   },
-  unknown: {
-    detect: () => null,
-    files: [],
-    updateVersion: (content) => content,
-  },
+  unknown: { detect: () => null, files: [], updateVersion: (content) => content },
 };
 
 export const detectProject = async (): Promise<ProjectInfo | null> => {
@@ -135,12 +123,7 @@ export const detectProject = async (): Promise<ProjectInfo | null> => {
         const content = await file.text();
         const info = handler.detect(content);
         if (info) {
-          return {
-            metadataFiles: [filename],
-            name: info.name,
-            type,
-            version: info.version,
-          };
+          return { metadataFiles: [filename], name: info.name, type, version: info.version };
         }
       }
     }
@@ -206,10 +189,7 @@ export const getLatestTag = async (): Promise<string | null> => {
 
 export const tagExists = async (tag: string): Promise<boolean> => {
   try {
-    const proc = Bun.spawn(['git', 'tag', '-l', tag], {
-      stderr: 'pipe',
-      stdout: 'pipe',
-    });
+    const proc = Bun.spawn(['git', 'tag', '-l', tag], { stderr: 'pipe', stdout: 'pipe' });
     const exitCode = await proc.exited;
     if (exitCode !== 0) {
       return false;

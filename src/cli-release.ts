@@ -66,9 +66,7 @@ const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
   p.log.success(`Created tag ${newVersion}`);
 
   // Push to remote
-  const shouldPush = await p.confirm({
-    message: 'Push to remote?',
-  });
+  const shouldPush = await p.confirm({ message: 'Push to remote?' });
 
   if (shouldPush) {
     await pushWithTags();

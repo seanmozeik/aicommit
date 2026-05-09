@@ -152,7 +152,7 @@ export const setupCommand = Command.make('setup', {}, () =>
             if (existingPresets.includes(v.trim())) {
               return 'Preset name already exists';
             }
-            return undefined;
+            return;
           },
         });
         if (typeof result === 'symbol') {
@@ -175,7 +175,7 @@ export const setupCommand = Command.make('setup', {}, () =>
             if (!v.includes('://')) {
               return 'Invalid URL (must include http:// or https://)';
             }
-            return undefined;
+            return;
           },
         });
         if (typeof result === 'symbol') {

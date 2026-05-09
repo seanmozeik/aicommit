@@ -20,7 +20,7 @@ const parseAicContent = (content: string): AicConfig => {
         const fullLine = pendingLine + trimmed;
         pendingLine = '';
 
-        const sectionMatch = fullLine.match(/^\[(\w+)\]$/u);
+        const sectionMatch = /^\[(\w+)\]$/u.exec(fullLine);
         if (sectionMatch) {
           currentSection = sectionMatch[1] as keyof AicConfig;
           config[currentSection] = [];
@@ -53,11 +53,7 @@ const executeCommand = async (
     readonly onOutput?: (output: string) => void;
   },
 ): Promise<boolean> => {
-  const proc = Bun.spawn({
-    cmd: ['sh', '-c', cmd],
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
+  const proc = Bun.spawn({ cmd: ['sh', '-c', cmd], stderr: 'pipe', stdout: 'pipe' });
 
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -133,11 +129,7 @@ const executeSectionWithProgress = async (
     index += 1;
     s.start(`Running command ${index}/${total}...`);
 
-    const proc = Bun.spawn({
-      cmd: ['sh', '-c', cmd],
-      stderr: 'pipe',
-      stdout: 'pipe',
-    });
+    const proc = Bun.spawn({ cmd: ['sh', '-c', cmd], stderr: 'pipe', stdout: 'pipe' });
 
     await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 

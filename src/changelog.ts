@@ -20,14 +20,14 @@ const changelogExists = (): Promise<boolean> => Bun.file(CHANGELOG_PATH).exists(
 const readChangelog = async (): Promise<string> => {
   const file = Bun.file(CHANGELOG_PATH);
   if (await file.exists()) {
-    return await file.text();
+    return  file.text();
   }
   return CHANGELOG_HEADER;
 };
 
 const writeChangelog = async (newEntry: string): Promise<void> => {
   const existingContent = await readChangelog();
-  const hasHeader = existingContent.match(/^# Changelog[\s\S]*?\n\n/u);
+  const hasHeader = /^# Changelog[\s\S]*?\n\n/u.exec(existingContent);
 
   if (!hasHeader) {
     const rest = existingContent.startsWith('#') ? '' : existingContent;
@@ -35,7 +35,7 @@ const writeChangelog = async (newEntry: string): Promise<void> => {
     return;
   }
 
-  const firstEntryMatch = existingContent.match(/\n## \[/u);
+  const firstEntryMatch = /\n## \[/u.exec(existingContent);
 
   if (firstEntryMatch?.index !== undefined) {
     const header = existingContent.slice(0, firstEntryMatch.index + 1);
@@ -52,9 +52,9 @@ const extractSection = (content: string, sectionName: string): string[] => {
   const pattern = new RegExp(`### ${sectionName}\\n([\\s\\S]*?)(?=### |$)`, 'iu');
   const match = content.match(pattern);
 
-  if (!match) return [];
+  if (!match) {return [];}
 
-  return match[1]!
+  return match[1]
     .split('\n')
     .map((line) => line.replace(/^-\s*/u, '').trim())
     .filter(Boolean);
@@ -102,7 +102,7 @@ const detectChangelogConvention = async (): Promise<'keepachangelog' | 'other' |
   if (
     content.includes('Keep a Changelog') ||
     content.includes('keepachangelog.com') ||
-    content.match(/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}/u)
+    (/## \[\d+\.\d+\.\d+\] - \d{4}-\d{2}-\d{2}/u.exec(content))
   ) {
     return 'keepachangelog';
   }
