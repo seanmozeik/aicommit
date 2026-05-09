@@ -1,6 +1,6 @@
 {
   "name": "@seanmozeik/aicommit",
-  "version": "0.3.10",
+  "version": "0.4.0",
   "description": "AI Commit Message Generator",
   "keywords": [
     "ai",
