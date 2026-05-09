@@ -12,7 +12,7 @@ import { validateMessage } from './validation';
 
 // Default AI configuration
 const DEFAULT_TIMEOUT = 30_000;
-const DEFAULT_MAX_TOKENS = 256;
+const DEFAULT_MAX_TOKENS = 32_000;
 const DEFAULT_TEMPERATURE = 0.2;
 
 /**
@@ -61,7 +61,7 @@ const buildApiRequest = (
   preset: Preset,
 ): { apiUrl: string; body: string; headers: Record<string, string> } => {
   const cleanBaseUrl = preset.baseUrl.replace(/\/$/u, '');
-  const apiUrl = preset.baseUrl.includes('/v1')
+  const apiUrl = preset.baseUrl.includes('/chat/completions')
     ? preset.baseUrl
     : `${cleanBaseUrl}/v1/chat/completions`;
 

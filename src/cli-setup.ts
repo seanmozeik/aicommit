@@ -240,8 +240,8 @@ export const setupCommand = Command.make('setup', {}, () =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: async () => {
         const result = await p.text({
-          defaultValue: '256',
-          message: 'Context window / max tokens (optional, default 256):',
+          defaultValue: '32000',
+          message: 'Context window / max tokens (optional, default 32000):',
         });
         if (typeof result === 'symbol') {
           throw new TypeError('Cancelled');

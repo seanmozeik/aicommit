@@ -47,7 +47,8 @@ const validatePreset = (
       process.exit(1);
     }
 
-    const presetName = selectedPreset ?? presets[0] ?? 'claude';
+    const [firstPreset] = presets;
+    const presetName = selectedPreset ?? firstPreset ?? 'claude';
     const isClaudePreset = presetName === 'claude';
     const presetConfig = isClaudePreset
       ? null
@@ -83,120 +84,122 @@ const buildFileList = (classified: ReturnType<typeof classifyFiles>): string => 
   return fileList.join('\n');
 };
 
+const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unknown> =>
+  Effect.gen(function* commitHandlerGen() {
+    // Change to git root
+    const inRepo = yield* Effect.tryPromise({ catch: () => false, try: () => cdToGitRoot() });
+
+    if (!inRepo) {
+      console.error(theme.error('Not a git repository'));
+      process.exit(1);
+    }
+
+    // Show banner
+    showBanner();
+
+    // Load and validate preset
+    const { presetConfig, presetName } = yield* validatePreset(preset);
+
+    // Check if we're in a git repo
+    const isRepo = yield* Effect.tryPromise(() => isGitRepo());
+    if (!isRepo) {
+      p.outro(theme.error('Not a git repository'));
+      process.exit(1);
+    }
+
+    // Check for staged files
+    const stagedFiles = yield* Effect.tryPromise(() => getStagedFiles());
+    let hasStaged = stagedFiles.length > 0;
+
+    // Check if HEAD exists (false for initial commit)
+    const headExists = yield* Effect.tryPromise(() => hasHead());
+
+    // If no files staged and we have HEAD, offer file selection
+    if (headExists && !hasStaged) {
+      hasStaged = yield* selectFilesToStage;
+    }
+
+    // Get commit type selection
+    const selectedType = yield* selectCommitType;
+
+    // Get user description
+    const userInput = yield* selectUserDescription;
+
+    // Get diff
+    let diffOutput: string;
+    try {
+      diffOutput = yield* getDiffOutput(hasStaged, headExists);
+    } catch (error) {
+      p.log.error(`Failed to get diff: ${error instanceof Error ? error.message : String(error)}`);
+      p.outro(theme.error('Aborted'));
+      process.exit(1);
+    }
+
+    if (!diffOutput.trim()) {
+      p.outro(frappeColors.subtext1('No changes to commit'));
+      process.exit(0);
+    }
+
+    // Parse and classify files
+    const parsed = parseUnifiedDiff(diffOutput);
+    const classified = classifyFiles(parsed.files);
+
+    if (classified.included.length === 0 && classified.summarized.length === 0) {
+      p.outro(frappeColors.subtext1('No relevant changes (all files excluded)'));
+      process.exit(0);
+    }
+
+    // Build file list for prompt
+    const fileList = buildFileList(classified);
+
+    // Extract semantics and compress diffs
+    const semantics = extractSemantics(classified.included);
+    const compressedDiffs = compressDiffs(classified.included);
+    const stats = formatStats(classified, parsed.totalAdditions, parsed.totalDeletions);
+    const recentCommits = yield* Effect.tryPromise(() =>
+      getRecentCommitMessages(DEFAULT_RECENT_COMMITS_COUNT),
+    );
+
+    // Helper to generate commit message with spinner
+    const generateMessage = generateCommitMessage({
+      compressedDiffs,
+      fileList,
+      presetConfig,
+      presetName,
+      recentCommits,
+      selectedType,
+      semantics,
+      stats,
+      userInput,
+    } as GenerationInput);
+
+    // Start AI generation in background immediately (runs while we display panels)
+    const aiPromise = Effect.runPromise(generateMessage);
+
+    // Display context panel (AI is already running in background)
+    yield* Effect.tryPromise(() =>
+      displayContextPanel(classified, parsed.totalAdditions, parsed.totalDeletions),
+    );
+
+    let commitMessage: string;
+    try {
+      commitMessage = yield* Effect.tryPromise(() => aiPromise);
+    } catch (error) {
+      p.log.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+
+    // Display the commit message in styled box
+    displayCommitMessage(commitMessage);
+
+    // Show action menu
+    yield* showActionMenu(hasStaged)(commitMessage, generateMessage);
+  });
+
 export const commitCommand = Command.make(
   'commit',
   { preset: Flag.optional(Flag.string('preset')) },
-  ({ preset }) =>
-    Effect.gen(function* commitCommandGen() {
-      // Change to git root
-      const inRepo = yield* Effect.tryPromise({ catch: () => false, try: () => cdToGitRoot() });
-
-      if (!inRepo) {
-        console.error(theme.error('Not a git repository'));
-        process.exit(1);
-      }
-
-      // Show banner
-      showBanner();
-
-      // Load and validate preset
-      const { presetConfig, presetName } = yield* validatePreset(preset);
-
-      // Check if we're in a git repo
-      const isRepo = yield* Effect.tryPromise(() => isGitRepo());
-      if (!isRepo) {
-        p.outro(theme.error('Not a git repository'));
-        process.exit(1);
-      }
-
-      // Check for staged files
-      const stagedFiles = yield* Effect.tryPromise(() => getStagedFiles());
-      let hasStaged = stagedFiles.length > 0;
-
-      // Check if HEAD exists (false for initial commit)
-      const headExists = yield* Effect.tryPromise(() => hasHead());
-
-      // If no files staged and we have HEAD, offer file selection
-      if (headExists && !hasStaged) {
-        hasStaged = yield* selectFilesToStage;
-      }
-
-      // Get commit type selection
-      const selectedType = yield* selectCommitType;
-
-      // Get user description
-      const userInput = yield* selectUserDescription;
-
-      // Get diff
-      let diffOutput: string;
-      try {
-        diffOutput = yield* getDiffOutput(hasStaged, headExists);
-      } catch (error) {
-        p.log.error(
-          `Failed to get diff: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        p.outro(theme.error('Aborted'));
-        process.exit(1);
-      }
-
-      if (!diffOutput.trim()) {
-        p.outro(frappeColors.subtext1('No changes to commit'));
-        process.exit(0);
-      }
-
-      // Parse and classify files
-      const parsed = parseUnifiedDiff(diffOutput);
-      const classified = classifyFiles(parsed.files);
-
-      if (classified.included.length === 0 && classified.summarized.length === 0) {
-        p.outro(frappeColors.subtext1('No relevant changes (all files excluded)'));
-        process.exit(0);
-      }
-
-      // Build file list for prompt
-      const fileList = buildFileList(classified);
-
-      // Extract semantics and compress diffs
-      const semantics = extractSemantics(classified.included);
-      const compressedDiffs = compressDiffs(classified.included);
-      const stats = formatStats(classified, parsed.totalAdditions, parsed.totalDeletions);
-      const recentCommits = yield* Effect.tryPromise(() =>
-        getRecentCommitMessages(DEFAULT_RECENT_COMMITS_COUNT),
-      );
-
-      // Helper to generate commit message with spinner
-      const generateMessage = generateCommitMessage({
-        compressedDiffs,
-        fileList,
-        presetConfig,
-        presetName,
-        recentCommits,
-        selectedType,
-        semantics,
-        stats,
-        userInput,
-      } as GenerationInput);
-
-      // Start AI generation in background immediately (runs while we display panels)
-      const aiPromise = Effect.runPromise(generateMessage);
-
-      // Display context panel (AI is already running in background)
-      yield* Effect.tryPromise(() =>
-        displayContextPanel(classified, parsed.totalAdditions, parsed.totalDeletions),
-      );
-
-      let commitMessage: string;
-      try {
-        commitMessage = yield* Effect.tryPromise(() => aiPromise);
-      } catch (error) {
-        p.log.error(error instanceof Error ? error.message : String(error));
-        process.exit(1);
-      }
-
-      // Display the commit message in styled box
-      displayCommitMessage(commitMessage);
-
-      // Show action menu
-      yield* showActionMenu(hasStaged)(commitMessage, generateMessage);
-    }),
+  ({ preset }) => commitHandler(preset),
 );
+
+export { commitHandler };
