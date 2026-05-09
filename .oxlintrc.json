@@ -50,6 +50,8 @@
           "Record",
           "Unknown",
           "Struct",
+          "Literal",
+          "Array",
           "optionalKey",
           "fromJsonString",
           "decodeUnknownOption",

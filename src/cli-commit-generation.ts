@@ -78,11 +78,6 @@ const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
     return validated;
   }).pipe(
     Effect.catchTags({
-      ApiResponseError: (error) => {
-        spinner().stop(theme.error('Failed'));
-        log.error(`API response error: ${error.message}`);
-        return Effect.die(error);
-      },
       ClaudeCliError: (error) => {
         spinner().stop(theme.error('Failed'));
         log.error(`Claude CLI error (exit code ${error.exitCode}): ${error.message}`);

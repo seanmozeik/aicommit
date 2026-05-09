@@ -1,42 +1,39 @@
-import { Effect } from 'effect';
+// LLM call orchestration. Three backends:
+//   - Claude CLI (subprocess: `claude --model haiku -p`)
+//   - Codex CLI (subprocess: `codex exec ...`) — see ./ai-codex.ts
+//   - OpenAI-compatible HTTP — uses the Effect AI Toolkit pattern from
+//     ~/dev/vault/scripts/session-extract/extract.ts (Tool.make /
+//     Toolkit.make / generateText / ExecutionPlan retries)
+//
+// History note: the OpenAI-compatible path used to hand-roll a `fetch`
+// To `/v1/chat/completions` with `tool_choice: { function: { name }, type:
+// 'function' }`. That object form is honoured by OpenAI proper but ignored
+// By several local backends (vLLM, sglang, llama.cpp), which silently fell
+// Back to plain `content` and broke the tool-call contract. The toolkit
+// Uses `tool_choice: 'required'` (string form) which works across all
+// Backends, and reads `response.toolCalls` typed instead of parsing
+// `tool_calls[0].function.arguments`.
+
+import { Effect, type Layer, Schema } from 'effect';
+import { Tool, Toolkit } from 'effect/unstable/ai';
 
 import { generateWithCodex } from './ai-codex';
+import { generateWithToolkit } from './ai-toolkit';
 import { COMMIT_TYPES } from './commit-types';
-import type { ApiResponseError as ApiResponseErrorClass } from './errors/index';
 import {
   ClaudeCliError as ClaudeCliErrorClass,
-  OpenAiApiError as OpenAiApiErrorClass,
+  type OpenAiApiError as OpenAiApiErrorClass,
 } from './errors/index.js';
 import { buildPrompt, buildSystemPrompt } from './prompt';
 import type { Preset } from './secrets';
 import { estimateTokens } from './tokenizer';
 import { validateMessage } from './validation';
-const DEFAULT_TIMEOUT = 30_000;
+
 const DEFAULT_CONTEXT_WINDOW = 32_000;
 const INPUT_CONTEXT_FRACTION = 0.25;
 const OUTPUT_CONTEXT_FRACTION = 0.05;
 const MIN_INPUT_TOKENS = 1000;
 const MIN_OUTPUT_TOKENS = 64;
-const BAD_REQUEST_STATUS = 400;
-
-const SUBMIT_COMMIT_MESSAGE_TOOL = {
-  function: {
-    description: 'Submit the final one-line conventional commit message.',
-    name: 'SubmitCommitMessage',
-    parameters: {
-      additionalProperties: false,
-      properties: {
-        message: {
-          description: 'A single conventional commit subject, at most 72 characters.',
-          type: 'string',
-        },
-      },
-      required: ['message'],
-      type: 'object',
-    },
-  },
-  type: 'function',
-} as const;
 
 interface ModelBudgets {
   readonly contextWindow: number;
@@ -58,6 +55,9 @@ const getModelBudgets = (
     ),
   };
 };
+
+// --- Claude CLI subprocess (unchanged) ----------------------------------
+
 const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErrorClass> =>
   Effect.gen(function* generateWithClaudeGen() {
     const proc = Bun.spawn(['claude', '--model', 'haiku', '-p', prompt], {
@@ -93,190 +93,63 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
         }),
       try: () => new Response(proc.stdout).text(),
     });
-    const trimmed = text.trim();
-    return trimmed;
-  });
-const buildApiRequest = (
-  prompt: string,
-  preset: Preset,
-  options: {
-    readonly maxOutputContextFraction?: number;
-    readonly reasoningControls?: boolean;
-    readonly systemPrompt?: string;
-    readonly tool?: typeof SUBMIT_COMMIT_MESSAGE_TOOL;
-  } = {},
-): { apiUrl: string; body: string; headers: Record<string, string> } => {
-  const cleanBaseUrl = preset.baseUrl.replace(/\/$/u, '');
-  const apiUrl = preset.baseUrl.includes('/chat/completions')
-    ? preset.baseUrl
-    : `${cleanBaseUrl}/v1/chat/completions`;
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-
-  if (preset.apiKey !== undefined && preset.apiKey !== '') {
-    headers['Authorization'] = `Bearer ${preset.apiKey}`;
-  }
-
-  const tool = options.tool ?? SUBMIT_COMMIT_MESSAGE_TOOL;
-  const budgets = getModelBudgets(preset, {
-    outputContextFraction: options.maxOutputContextFraction,
+    return text.trim();
   });
 
-  const body = JSON.stringify({
-    ...(options.reasoningControls === true
-      ? {
-          chat_template_kwargs: { enable_thinking: false },
-          reasoning: { effort: 'none', enabled: false, exclude: true },
-          reasoning_effort: 'none',
-        }
-      : {}),
-    max_tokens: budgets.maxOutputTokens,
-    messages: [
-      { content: options.systemPrompt ?? buildSystemPrompt(), role: 'system' },
-      { content: prompt, role: 'user' },
-    ],
-    model: preset.model,
-    tool_choice: { function: { name: tool.function.name }, type: 'function' },
-    tools: [tool],
-  });
+// --- OpenAI-compatible (Effect AI Toolkit) ------------------------------
 
-  return { apiUrl, body, headers };
-};
+const SubmitCommitMessage = Tool.make('SubmitCommitMessage', {
+  description: 'Submit the final one-line conventional commit message.',
+  failureMode: 'return',
+  parameters: Schema.Struct({
+    message: Schema.String.annotate({
+      description: 'A single conventional commit subject, at most 72 characters.',
+    }),
+  }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
 
-const fetchApiResponse = (request: {
-  apiUrl: string;
-  body: string;
-  headers: Record<string, string>;
-}): Effect.Effect<Response, OpenAiApiErrorClass> =>
-  Effect.tryPromise({
-    catch: (error) =>
-      new OpenAiApiErrorClass({
-        error,
-        message: `Failed to fetch from ${request.apiUrl}`,
-        statusCode: 0,
-      }),
-    try: () =>
-      fetch(request.apiUrl, {
-        body: request.body,
-        headers: request.headers,
-        method: 'POST',
-        signal: AbortSignal.timeout(DEFAULT_TIMEOUT),
-      }),
-  });
+const CommitToolkit = Toolkit.make(SubmitCommitMessage);
 
-interface OpenAiMessage {
-  content?: string;
-  tool_calls?: { function?: { arguments?: string; name?: string } }[];
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
-
-const isOpenAiMessage = (value: unknown): value is OpenAiMessage => {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return (
-    typeof value['content'] === 'string' ||
-    ('tool_calls' in value && Array.isArray(value['tool_calls']))
-  );
-};
-
-const validateOpenAiResponse = (json: unknown): { choices: { message: OpenAiMessage }[] } => {
-  if (
-    !isRecord(json) ||
-    !('choices' in json) ||
-    !Array.isArray(json['choices']) ||
-    json['choices'].length === 0
-  ) {
-    throw new Error('Invalid API response structure');
-  }
-
-  const choices = json['choices'] as unknown[];
-  const [firstChoice] = choices;
-  const { message } = isRecord(firstChoice) ? firstChoice : { message: undefined };
-  if (!isOpenAiMessage(message)) {
-    throw new Error('Invalid API response structure');
-  }
-
-  return { choices: [{ message }] };
-};
-
-const extractToolField = (
-  toolCalls: { function?: { arguments?: string; name?: string } }[] | undefined,
-  toolName: string,
-  fieldName: string,
-): string | null => {
-  const call = toolCalls?.find((toolCall) => toolCall.function?.name === toolName);
-  const args = call?.function?.arguments;
-  if (args === undefined || args.trim() === '') {
-    return null;
-  }
-  const parsed: unknown = JSON.parse(args);
-  if (isRecord(parsed) && typeof parsed[fieldName] === 'string') {
-    return parsed[fieldName].trim();
-  }
-  return null;
-};
-
-const parseApiResponse = (
-  response: Response,
-  options: { readonly toolField?: string; readonly toolName?: string } = {},
-): Effect.Effect<{ content: string }, OpenAiApiErrorClass | ApiResponseErrorClass> =>
-  Effect.gen(function* parseApiResponseGen() {
-    if (!response.ok) {
-      return yield* new OpenAiApiErrorClass({
-        error: new Error(`API request failed: ${response.status}`),
-        message: `API request failed: ${response.status}`,
-        statusCode: response.status,
-      });
-    }
-
-    const data = yield* Effect.tryPromise({
-      catch: (error) =>
-        new OpenAiApiErrorClass({
-          error,
-          message: 'Failed to parse API response',
-          statusCode: response.status,
-        }),
-      try: async () => {
-        const json: unknown = await response.json();
-        return validateOpenAiResponse(json);
-      },
-    });
-
-    const { content, tool_calls: toolCalls } = data.choices[0].message;
-    const toolMessage = yield* Effect.try({
-      catch: (error) =>
-        new OpenAiApiErrorClass({
-          error,
-          message: `Failed to parse ${options.toolName ?? 'SubmitCommitMessage'} tool call`,
-          statusCode: response.status,
-        }),
-      try: () =>
-        extractToolField(
-          toolCalls,
-          options.toolName ?? SUBMIT_COMMIT_MESSAGE_TOOL.function.name,
-          options.toolField ?? 'message',
-        ),
-    });
-
-    return { content: (toolMessage ?? content ?? '').trim() };
-  });
+const CommitToolkitLayer = CommitToolkit.toLayer(
+  Effect.succeed(
+    CommitToolkit.of({ SubmitCommitMessage: () => Effect.succeed({ ok: true as const }) }),
+  ),
+);
 
 const generateWithOpenAICompatible = (
   prompt: string,
   preset: Preset,
-): Effect.Effect<string, OpenAiApiErrorClass | ApiResponseErrorClass> =>
-  Effect.gen(function* generateWithOpenAICompatibleGen() {
-    const request = buildApiRequest(prompt, preset, { reasoningControls: true });
-    let response = yield* fetchApiResponse(request);
-    if (response.status === BAD_REQUEST_STATUS) {
-      response = yield* fetchApiResponse(buildApiRequest(prompt, preset));
-    }
-    const { content } = yield* parseApiResponse(response);
-    return content;
+): Effect.Effect<string, OpenAiApiErrorClass> => {
+  const budgets = getModelBudgets(preset);
+  return generateWithToolkit({
+    extractFromCalls: (calls) => {
+      const call = calls.find((c) => c.name === 'SubmitCommitMessage');
+      if (call === undefined) {
+        return null;
+      }
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- params shape is enforced by the SubmitCommitMessage tool schema
+      const params = call.params as { message?: unknown };
+      const message = typeof params.message === 'string' ? params.message.trim() : '';
+      return message.length > 0 ? message : null;
+    },
+    // Some local backends still occasionally return prose. Accept it as a
+    // Last-resort fallback rather than crashing — the validateMessage call
+    // Downstream will reject obvious junk anyway.
+    fallbackFromText: (text) => {
+      const trimmed = text.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    },
+    maxOutputTokens: budgets.maxOutputTokens,
+    preset,
+    systemPrompt: buildSystemPrompt(),
+    // eslint-disable-next-line typescript/no-unsafe-type-assertion, typescript/no-explicit-any -- generic erasure: Toolkit.Toolkit<{...}> → Toolkit<Record<string,any>> for the helper signature; TInput is reconstructed at extractFromCalls
+    toolkit: CommitToolkit as unknown as Toolkit.Toolkit<Record<string, any>>,
+    // eslint-disable-next-line typescript/no-unsafe-type-assertion -- generic erasure on the matching layer
+    toolkitLayer: CommitToolkitLayer as Layer.Layer<unknown>,
+    userPrompt: prompt,
   });
+};
 
 export { COMMIT_TYPES, buildPrompt, estimateTokens, generateWithClaude, generateWithCodex };
 export { generateWithOpenAICompatible, getModelBudgets, validateMessage };

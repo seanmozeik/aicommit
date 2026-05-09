@@ -1,38 +1,39 @@
-import { Effect } from 'effect';
+// Keep a Changelog generation. Same Toolkit pattern as ai.ts — the
+// Submit-tool returns markdown instead of a commit message.
 
+import { Effect, type Layer, Schema } from 'effect';
+import { Tool, Toolkit } from 'effect/unstable/ai';
+
+import { generateWithToolkit } from './ai-toolkit';
+import type { OpenAiApiError as OpenAiApiErrorClass } from './errors/index';
 import type { Preset } from './secrets';
 
-const DEFAULT_TIMEOUT = 30_000;
 const DEFAULT_CONTEXT_WINDOW = 32_000;
 const OUTPUT_CONTEXT_FRACTION = 0.1;
 const MIN_OUTPUT_TOKENS = 64;
-const BAD_REQUEST_STATUS = 400;
-
-const SUBMIT_CHANGELOG_TOOL = {
-  function: {
-    description: 'Submit the final Keep a Changelog markdown body for one release.',
-    name: 'SubmitChangelog',
-    parameters: {
-      additionalProperties: false,
-      properties: {
-        markdown: {
-          description:
-            'Markdown body containing only Keep a Changelog sections such as Added, Changed, Fixed, and Removed.',
-          type: 'string',
-        },
-      },
-      required: ['markdown'],
-      type: 'object',
-    },
-  },
-  type: 'function',
-} as const;
 
 const CHANGELOG_SYSTEM_PROMPT =
   'Use the SubmitChangelog tool with the Keep a Changelog markdown body (no version heading or date).';
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null;
+const SubmitChangelog = Tool.make('SubmitChangelog', {
+  description: 'Submit the final Keep a Changelog markdown body for one release.',
+  failureMode: 'return',
+  parameters: Schema.Struct({
+    markdown: Schema.String.annotate({
+      description:
+        'Markdown body containing only Keep a Changelog sections such as Added, Changed, Fixed, and Removed.',
+    }),
+  }),
+  success: Schema.Struct({ ok: Schema.Literal(true) }),
+});
+
+const ChangelogToolkit = Toolkit.make(SubmitChangelog);
+
+const ChangelogToolkitLayer = ChangelogToolkit.toLayer(
+  Effect.succeed(
+    ChangelogToolkit.of({ SubmitChangelog: () => Effect.succeed({ ok: true as const }) }),
+  ),
+);
 
 const maxOutputTokens = (preset: Preset): number =>
   Math.max(
@@ -40,104 +41,31 @@ const maxOutputTokens = (preset: Preset): number =>
     Math.floor((preset.contextWindow ?? DEFAULT_CONTEXT_WINDOW) * OUTPUT_CONTEXT_FRACTION),
   );
 
-const buildChangelogRequest = (
-  prompt: string,
-  preset: Preset,
-  options: { readonly reasoningControls?: boolean } = {},
-): { apiUrl: string; body: string; headers: Record<string, string> } => {
-  const cleanBaseUrl = preset.baseUrl.replace(/\/$/u, '');
-  const apiUrl = preset.baseUrl.includes('/chat/completions')
-    ? preset.baseUrl
-    : `${cleanBaseUrl}/v1/chat/completions`;
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (preset.apiKey !== undefined && preset.apiKey !== '') {
-    headers['Authorization'] = `Bearer ${preset.apiKey}`;
-  }
-  const body = JSON.stringify({
-    ...(options.reasoningControls === true
-      ? {
-          chat_template_kwargs: { enable_thinking: false },
-          reasoning: { effort: 'none', enabled: false, exclude: true },
-          reasoning_effort: 'none',
-        }
-      : {}),
-    max_tokens: maxOutputTokens(preset),
-    messages: [
-      { content: CHANGELOG_SYSTEM_PROMPT, role: 'system' },
-      { content: prompt, role: 'user' },
-    ],
-    model: preset.model,
-    tool_choice: { function: { name: SUBMIT_CHANGELOG_TOOL.function.name }, type: 'function' },
-    tools: [SUBMIT_CHANGELOG_TOOL],
-  });
-  return { apiUrl, body, headers };
-};
-
-const fetchChangelogResponse = (request: {
-  readonly apiUrl: string;
-  readonly body: string;
-  readonly headers: Record<string, string>;
-}): Effect.Effect<Response> =>
-  Effect.tryPromise(() =>
-    fetch(request.apiUrl, {
-      body: request.body,
-      headers: request.headers,
-      method: 'POST',
-      signal: AbortSignal.timeout(DEFAULT_TIMEOUT),
-    }),
-  );
-
-const extractChangelogMarkdown = async (response: Response): Promise<string> => {
-  if (!response.ok) {
-    throw new Error(`Changelog API request failed: ${response.status}`);
-  }
-  const json: unknown = await response.json();
-  if (!isRecord(json) || !Array.isArray(json['choices'])) {
-    throw new Error('Invalid changelog API response');
-  }
-  const { choices }: { readonly choices: unknown[] } = { choices: json['choices'] };
-  const [choice] = choices;
-  const message = isRecord(choice) ? choice['message'] : undefined;
-  const toolCalls: unknown[] =
-    isRecord(message) && Array.isArray(message['tool_calls']) ? message['tool_calls'] : [];
-  const toolCall = toolCalls.find(
-    (call) =>
-      isRecord(call) &&
-      isRecord(call['function']) &&
-      call['function']['name'] === SUBMIT_CHANGELOG_TOOL.function.name,
-  );
-  const args =
-    isRecord(toolCall) && isRecord(toolCall['function'])
-      ? toolCall['function']['arguments']
-      : undefined;
-  const content =
-    isRecord(message) && typeof message['content'] === 'string' ? message['content'] : undefined;
-
-  if (typeof args === 'string' && args.trim() !== '') {
-    const parsed: unknown = JSON.parse(args);
-    if (isRecord(parsed) && typeof parsed['markdown'] === 'string') {
-      return parsed['markdown'].trim();
-    }
-    throw new Error('Invalid SubmitChangelog payload');
-  }
-
-  if (typeof content === 'string' && content.trim() !== '') {
-    return content.trim();
-  }
-
-  throw new Error('Changelog model did not call SubmitChangelog and returned no content');
-};
-
 export const generateChangelogWithOpenAICompatible = (
   prompt: string,
   preset: Preset,
-): Effect.Effect<string, unknown> =>
-  Effect.gen(function* generateChangelogWithOpenAICompatibleGen() {
-    let response = yield* fetchChangelogResponse(
-      buildChangelogRequest(prompt, preset, { reasoningControls: true }),
-    );
-    if (response.status === BAD_REQUEST_STATUS) {
-      response = yield* fetchChangelogResponse(buildChangelogRequest(prompt, preset));
-    }
-    return yield* Effect.tryPromise(() => extractChangelogMarkdown(response));
+): Effect.Effect<string, OpenAiApiErrorClass> =>
+  generateWithToolkit({
+    extractFromCalls: (calls) => {
+      const call = calls.find((c) => c.name === 'SubmitChangelog');
+      if (call === undefined) {
+        return null;
+      }
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- params shape is enforced by the SubmitChangelog tool schema
+      const params = call.params as { markdown?: unknown };
+      const md = typeof params.markdown === 'string' ? params.markdown.trim() : '';
+      return md.length > 0 ? md : null;
+    },
+    fallbackFromText: (text) => {
+      const trimmed = text.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    },
+    maxOutputTokens: maxOutputTokens(preset),
+    preset,
+    systemPrompt: CHANGELOG_SYSTEM_PROMPT,
+    // eslint-disable-next-line typescript/no-unsafe-type-assertion, typescript/no-explicit-any -- generic erasure for the helper signature; TInput is reconstructed at extractFromCalls
+    toolkit: ChangelogToolkit as unknown as Toolkit.Toolkit<Record<string, any>>,
+    // eslint-disable-next-line typescript/no-unsafe-type-assertion -- generic erasure on the matching layer
+    toolkitLayer: ChangelogToolkitLayer as Layer.Layer<unknown>,
+    userPrompt: prompt,
   });

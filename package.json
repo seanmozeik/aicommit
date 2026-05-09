@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.3.0",
+    "@effect/ai-openai-compat": "^4.0.0-beta.64",
     "@effect/platform-bun": "beta",
     "boxen": "^8.0.1",
     "effect": "beta",
