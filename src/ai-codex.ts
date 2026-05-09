@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 
-import { CodexCliError as CodexCliErrorClass } from './errors/index.js';
+import { CodexCliError as CodexCliErrorClass } from './errors/index';
 import { buildSystemPrompt } from './prompt';
 
 const CODEX_MODEL = 'gpt-5.4-mini';

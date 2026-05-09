@@ -120,7 +120,15 @@ npm publish
 
 `[release]` commands run during `aic release`. Use this for build/test steps that should happen before the release commit and tag.
 
-`[publish]` is available for project publishing commands.
+`[publish]` commands can run after the release commit/tag and optional push. This is intended for npm publishing, GitHub release creation, and tap updates.
+
+Release supports semver bump arguments:
+
+```bash
+aic release patch # 0.3.10 -> 0.3.11
+aic release minor # 0.3.10 -> 0.4.0
+aic release major # 0.3.10 -> 1.0.0
+```
 
 ## How It Works
 

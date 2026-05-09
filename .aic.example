@@ -16,3 +16,5 @@ bun run build
 [publish]
 # Commands for project-specific publishing flows.
 # npm publish
+# VERSION=$(bun -p 'require("./package.json").version') && gh release create "v${VERSION}" artifacts/*.tar.gz --title "v${VERSION}" --notes "$(awk '/^## \[/{count++} count==1' CHANGELOG.md | tail -n +2)"
+# VERSION=$(bun -p 'require("./package.json").version') && cp Formula/aic.rb ../tap/Formula/aic.rb && cd ../tap && git add Formula/aic.rb && git commit -m "aic ${VERSION}" && git push

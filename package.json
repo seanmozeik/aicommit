@@ -2,20 +2,30 @@
   "name": "@seanmozeik/aicommit",
   "version": "0.3.10",
   "description": "AI Commit Message Generator",
+  "keywords": [
+    "ai",
+    "bun",
+    "cli",
+    "commit",
+    "conventional-commits",
+    "git"
+  ],
+  "homepage": "https://github.com/seanmozeik/AICommit#readme",
+  "bugs": {
+    "url": "https://github.com/seanmozeik/AICommit/issues"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanmozeik/AICommit.git"
+  },
   "bin": {
     "aic": "./dist/aic.js"
   },
   "files": [
-    "dist",
-    "src"
+    "dist/aic.js"
   ],
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +39,7 @@
     "format": "oxfmt --write .",
     "lint": "oxlint --format agent --tsconfig tsconfig.oxlint.json ./src ./tests ./scripts",
     "lint:fix": "oxlint --format agent --tsconfig tsconfig.oxlint.json --fix ./src ./tests ./scripts",
-    "prepare": "effect-language-service patch"
+    "prepare": "./node_modules/.bin/effect-language-service patch"
   },
   "dependencies": {
     "@clack/prompts": "^1.3.0",

@@ -1,7 +1,7 @@
 /* oxlint-disable import/no-namespace */
 import * as p from '@clack/prompts';
 import { Effect } from 'effect';
-import { Command } from 'effect/unstable/cli';
+import { Argument, Command } from 'effect/unstable/cli';
 
 import {
   executeSectionWithProgress,
@@ -19,6 +19,19 @@ import { commit, createTag, getLatestTag, isGitRepo, pushWithTags, stageFiles } 
 import { bumpVersion, detectProject, updateProjectVersion } from './project';
 import type { ReleaseType } from './types';
 import { theme } from './ui/theme';
+
+const releaseTypeArg = Argument.choice('type', ['patch', 'minor', 'major'] as const).pipe(
+  Argument.withDefault('patch' as const),
+  Argument.withDescription('Version bump type'),
+);
+
+const getReleaseMetadataFiles = async (projectFiles: readonly string[]): Promise<string[]> => {
+  const files = new Set([...projectFiles, 'CHANGELOG.md']);
+  if (await Bun.file('Formula/aic.rb').exists()) {
+    files.add('Formula/aic.rb');
+  }
+  return [...files];
+};
 
 const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
   p.intro(theme.primary('🚀 Release'));
@@ -76,7 +89,7 @@ const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
   }
 
   // Commit changes
-  await stageFiles([...project.metadataFiles, 'CHANGELOG.md']);
+  await stageFiles(await getReleaseMetadataFiles(project.metadataFiles));
   await commit(`chore(release): ${newVersion}`);
   p.log.success('Committed version bump and changelog');
 
@@ -90,6 +103,18 @@ const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
   if (shouldPush === true) {
     await pushWithTags();
     p.log.success('Pushed to remote');
+  }
+
+  if (config?.publish) {
+    const shouldPublish = await p.confirm({ message: 'Run publish commands?' });
+    if (shouldPublish === true) {
+      const s = p.spinner();
+      const ok = await executeSectionWithProgress('publish', config, s);
+      if (!ok) {
+        p.outro(theme.error('Publish command failed'));
+        process.exit(1);
+      }
+    }
   }
 
   p.outro(theme.success(`Release ${newVersion} complete!`));
@@ -113,10 +138,10 @@ const initRelease = async (): Promise<void> => {
   p.outro(theme.success('Release configuration initialized!'));
 };
 
-const releaseCommand = Command.make('release').pipe(
-  Command.withHandler(() =>
+const releaseCommand = Command.make('release', { releaseType: releaseTypeArg }).pipe(
+  Command.withHandler(({ releaseType }) =>
     Effect.gen(function* releaseHandler() {
-      yield* Effect.tryPromise(() => interactiveRelease('patch'));
+      yield* Effect.tryPromise(() => interactiveRelease(releaseType));
     }),
   ),
 );
