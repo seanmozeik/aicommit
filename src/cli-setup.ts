@@ -1,5 +1,4 @@
-/* oxlint-disable import/no-namespace */
-import * as p from '@clack/prompts';
+import { confirm, intro, log, note, outro, password, select, spinner, text } from '@clack/prompts';
 import { Effect } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
@@ -17,8 +16,8 @@ import { frappeColors, theme } from './ui/theme';
 export const setupCommand = Command.make('setup', {}, () =>
   Effect.gen(function* setupCommandGen() {
     showBanner();
-    p.intro(frappeColors.text('Setup AI Presets'));
-    p.note(
+    intro(frappeColors.text('Setup AI Presets'));
+    note(
       'Built-in presets: claude (requires Claude CLI), codex (requires Codex CLI)\nUse --preset claude or --preset codex without setup',
       'Info',
     );
@@ -31,7 +30,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       catch: (error) =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: () =>
-        p.select({
+        select({
           message: 'What would you like to do?',
           options: [
             { label: 'Add a new preset', value: 'add' },
@@ -53,7 +52,7 @@ export const setupCommand = Command.make('setup', {}, () =>
 
     if (action === 'default') {
       if (existingPresets.length === 0) {
-        p.outro(theme.error('No presets configured. Add a preset first.'));
+        outro(theme.error('No presets configured. Add a preset first.'));
         return;
       }
       yield* handleSetDefault(existingPresets, currentDefault);
@@ -62,7 +61,7 @@ export const setupCommand = Command.make('setup', {}, () =>
 
     if (action === 'delete') {
       if (existingPresets.length === 0) {
-        p.outro(theme.error('No presets configured.'));
+        outro(theme.error('No presets configured.'));
         return;
       }
       yield* handleDeletePreset(existingPresets, currentDefault);
@@ -74,7 +73,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       catch: (error) =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: async () => {
-        const result = await p.text({
+        const result = await text({
           message: 'Preset name (e.g., openrouter, local, openai):',
           validate: (v): string | undefined => {
             if (v === undefined || v.trim() === '') {
@@ -97,7 +96,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       catch: (error) =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: async () => {
-        const result = await p.text({
+        const result = await text({
           message: 'Base URL (e.g., https://openrouter.ai/api/v1, http://localhost:1234/v1):',
           validate: (v): string | undefined => {
             if (v === undefined || v.trim() === '') {
@@ -120,7 +119,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       catch: (error) =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: async () => {
-        const result = await p.confirm({
+        const result = await confirm({
           initialValue: false,
           message: 'Does this endpoint require an API key?',
         });
@@ -137,7 +136,7 @@ export const setupCommand = Command.make('setup', {}, () =>
         catch: (error) =>
           new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
         try: async () => {
-          const result = await p.password({
+          const result = await password({
             message: 'API Key:',
             validate: (v): string | undefined => {
               if (v === undefined || v.trim() === '') {
@@ -158,7 +157,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       catch: (error) =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: async () => {
-        const result = await p.text({
+        const result = await text({
           message: 'Model name (e.g., anthropic/claude-3.5-sonnet, gpt-4o-mini):',
           validate: (v): string | undefined => {
             if (v === undefined || v.trim() === '') {
@@ -178,7 +177,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       catch: (error) =>
         new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: async () => {
-        const result = await p.text({
+        const result = await text({
           defaultValue: '32000',
           message: 'Context window / max tokens (optional, default 32000):',
         });
@@ -196,7 +195,7 @@ export const setupCommand = Command.make('setup', {}, () =>
       model: model.trim(),
     };
 
-    const s = p.spinner();
+    const s = spinner();
     s.start('Saving preset...');
 
     try {
@@ -209,10 +208,7 @@ export const setupCommand = Command.make('setup', {}, () =>
           catch: (error) =>
             new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
           try: async () => {
-            const result = await p.confirm({
-              initialValue: true,
-              message: 'Set as default preset?',
-            });
+            const result = await confirm({ initialValue: true, message: 'Set as default preset?' });
             if (typeof result === 'symbol') {
               throw new TypeError('Cancelled');
             }
@@ -221,26 +217,26 @@ export const setupCommand = Command.make('setup', {}, () =>
         });
         if (setAsDefault) {
           yield* Effect.tryPromise(() => saveDefaultPreset(presetName.trim()));
-          p.outro(
+          outro(
             theme.success(
               `Preset "${presetName}" saved and set as default. Run aic to generate commit messages.`,
             ),
           );
         } else {
-          p.outro(
+          outro(
             theme.success(
               `Preset "${presetName}" saved. Run aic --preset ${presetName} to use it.`,
             ),
           );
         }
       } else {
-        p.outro(
+        outro(
           theme.success(`Preset "${presetName}" saved. Run aic --preset ${presetName} to use it.`),
         );
       }
     } catch (error) {
       s.stop(theme.error('Failed to save preset'));
-      p.log.error(error instanceof Error ? error.message : String(error));
+      log.error(error instanceof Error ? error.message : String(error));
       throw error;
     }
   }),

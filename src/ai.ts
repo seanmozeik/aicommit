@@ -192,10 +192,8 @@ const validateOpenAiResponse = (json: unknown): { choices: { message: OpenAiMess
     throw new Error('Invalid API response structure');
   }
 
-  // oxlint-disable-next-line prefer-destructuring
-  const choices: unknown[] = json['choices'];
-  // oxlint-disable-next-line prefer-destructuring
-  const firstChoice = choices[0];
+  const choices = json['choices'] as unknown[];
+  const [firstChoice] = choices;
   const { message } = isRecord(firstChoice) ? firstChoice : { message: undefined };
   if (!isOpenAiMessage(message)) {
     throw new Error('Invalid API response structure');

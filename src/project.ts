@@ -1,4 +1,3 @@
-/* oxlint-disable new-cap */
 import { Effect, Option, Schema } from 'effect';
 
 import type { ProjectInfo, ProjectType, ReleaseType } from './types';

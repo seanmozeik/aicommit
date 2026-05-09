@@ -1,5 +1,4 @@
-/* oxlint-disable import/no-namespace */
-import * as p from '@clack/prompts';
+import { log, outro, select, spinner, text } from '@clack/prompts';
 import { Effect } from 'effect';
 
 import {
@@ -69,7 +68,7 @@ const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
       userInput,
     });
 
-    const s = p.spinner();
+    const s = spinner();
     s.start(frappeColors.subtext1(`Generating with preset "${presetName}"...`));
 
     const message = yield* generateWithPreset(prompt, presetConfig);
@@ -80,23 +79,23 @@ const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
   }).pipe(
     Effect.catchTags({
       ApiResponseError: (error) => {
-        p.spinner().stop(theme.error('Failed'));
-        p.log.error(`API response error: ${error.message}`);
+        spinner().stop(theme.error('Failed'));
+        log.error(`API response error: ${error.message}`);
         return Effect.die(error);
       },
       ClaudeCliError: (error) => {
-        p.spinner().stop(theme.error('Failed'));
-        p.log.error(`Claude CLI error (exit code ${error.exitCode}): ${error.message}`);
+        spinner().stop(theme.error('Failed'));
+        log.error(`Claude CLI error (exit code ${error.exitCode}): ${error.message}`);
         return Effect.die(error);
       },
       CodexCliError: (error) => {
-        p.spinner().stop(theme.error('Failed'));
-        p.log.error(`Codex CLI error (exit code ${error.exitCode}): ${error.message}`);
+        spinner().stop(theme.error('Failed'));
+        log.error(`Codex CLI error (exit code ${error.exitCode}): ${error.message}`);
         return Effect.die(error);
       },
       OpenAiApiError: (error) => {
-        p.spinner().stop(theme.error('Failed'));
-        p.log.error(`API error (${error.statusCode}): ${error.message}`);
+        spinner().stop(theme.error('Failed'));
+        log.error(`API error (${error.statusCode}): ${error.message}`);
         return Effect.die(error);
       },
     }),
@@ -114,12 +113,12 @@ const selectCommitType = Effect.gen(function* selectCommitTypeGen() {
 
   return yield* Effect.tryPromise({
     catch: (_error) => {
-      p.outro(frappeColors.subtext1('Cancelled'));
+      outro(frappeColors.subtext1('Cancelled'));
       process.exit(0);
       throw new Error('Cancelled');
     },
     try: async () => {
-      const result = await p.select({
+      const result = await select({
         initialValue: 'auto',
         message: 'Commit type:',
         options: typeOptions,
@@ -135,15 +134,12 @@ const selectCommitType = Effect.gen(function* selectCommitTypeGen() {
 const selectUserDescription = Effect.gen(function* selectUserDescriptionGen() {
   return yield* Effect.tryPromise({
     catch: (_error) => {
-      p.outro(frappeColors.subtext1('Cancelled'));
+      outro(frappeColors.subtext1('Cancelled'));
       process.exit(0);
       throw new Error('Cancelled');
     },
     try: async () => {
-      const result = await p.text({
-        defaultValue: '',
-        message: 'Describe your changes (optional):',
-      });
+      const result = await text({ defaultValue: '', message: 'Describe your changes (optional):' });
       if (typeof result === 'symbol') {
         throw new TypeError('Cancelled');
       }

@@ -187,13 +187,10 @@ export const parseStatusOutput = (
 /**
  * Create a git tag
  */
-/* oxlint-disable unicorn/prefer-ternary */
 export const createTag = async (tag: string, message?: string): Promise<void> => {
-  if (message === undefined) {
-    await $`git tag ${tag}`.quiet();
-  } else {
-    await $`git tag -a ${tag} -m ${message}`.quiet();
-  }
+  await (message === undefined
+    ? $`git tag ${tag}`.quiet()
+    : $`git tag -a ${tag} -m ${message}`.quiet());
 };
 
 /**

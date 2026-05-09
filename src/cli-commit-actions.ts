@@ -1,5 +1,4 @@
-/* oxlint-disable import/no-namespace */
-import * as p from '@clack/prompts';
+import { confirm, log, outro, select, text } from '@clack/prompts';
 import { Effect } from 'effect';
 
 import { commit, push } from './git';
@@ -10,15 +9,12 @@ export const handleEditAction = (finalMessage: string): Effect.Effect<string> =>
   Effect.gen(function* handleEditActionGen() {
     const edited = yield* Effect.tryPromise({
       catch: (_error) => {
-        p.outro(frappeColors.subtext1('Cancelled'));
+        outro(frappeColors.subtext1('Cancelled'));
         process.exit(0);
         throw new Error('Cancelled');
       },
       try: async () => {
-        const result = await p.text({
-          initialValue: finalMessage,
-          message: 'Edit commit message:',
-        });
+        const result = await text({ initialValue: finalMessage, message: 'Edit commit message:' });
         if (typeof result === 'symbol') {
           throw new TypeError('Cancelled');
         }
@@ -36,10 +32,10 @@ export const handleCommitAction = (
   Effect.gen(function* handleCommitActionGen() {
     yield* Effect.tryPromise({
       catch: (error) => {
-        p.log.error(
+        log.error(
           `Commit failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
         );
-        p.outro(theme.error('Aborted'));
+        outro(theme.error('Aborted'));
         process.exit(1);
         throw new Error('Aborted');
       },
@@ -48,12 +44,12 @@ export const handleCommitAction = (
 
     const shouldPush = yield* Effect.tryPromise({
       catch: (_error) => {
-        p.outro(frappeColors.subtext1('Cancelled'));
+        outro(frappeColors.subtext1('Cancelled'));
         process.exit(0);
         throw new Error('Cancelled');
       },
       try: async () => {
-        const result = await p.confirm({ message: 'Push to remote?' });
+        const result = await confirm({ message: 'Push to remote?' });
         if (typeof result === 'symbol') {
           throw new TypeError('Cancelled');
         }
@@ -62,22 +58,20 @@ export const handleCommitAction = (
     });
 
     if (!shouldPush) {
-      p.outro(theme.success('Committed!'));
+      outro(theme.success('Committed!'));
       process.exit(0);
     }
 
     yield* Effect.tryPromise({
       catch: (error) => {
-        p.log.error(
-          `Push failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
-        );
-        p.outro(theme.warning('Committed locally, but push failed'));
+        log.error(`Push failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+        outro(theme.warning('Committed locally, but push failed'));
         process.exit(1);
         throw new Error('Push failed');
       },
       try: () => push(),
     });
-    p.outro(theme.success('Committed and pushed!'));
+    outro(theme.success('Committed and pushed!'));
     process.exit(0);
   });
 
@@ -85,14 +79,14 @@ export const handleCopyAction = (finalMessage: string): Effect.Effect<void> =>
   Effect.gen(function* handleCopyActionGen() {
     yield* Effect.tryPromise({
       catch: () => {
-        p.log.warn('No clipboard tool found.');
-        p.outro(finalMessage);
+        log.warn('No clipboard tool found.');
+        outro(finalMessage);
         process.exit(0);
         throw new Error('No clipboard tool');
       },
       try: () => Bun.write('/tmp/aic-commit.txt', finalMessage),
     });
-    p.outro(theme.success('Copied to clipboard!'));
+    outro(theme.success('Copied to clipboard!'));
     process.exit(0);
   });
 
@@ -107,12 +101,12 @@ export const showActionMenu =
       for (;;) {
         const action = yield* Effect.tryPromise({
           catch: (_error) => {
-            p.outro(frappeColors.subtext1('Cancelled'));
+            outro(frappeColors.subtext1('Cancelled'));
             process.exit(0);
             throw new Error('Cancelled');
           },
           try: async () => {
-            const result = await p.select({
+            const result = await select({
               message: 'What would you like to do?',
               options: [
                 ...(hasStaged ? [{ hint: 'staged files', label: 'Commit', value: 'commit' }] : []),
@@ -130,7 +124,7 @@ export const showActionMenu =
         });
 
         if (action === 'cancel') {
-          p.outro(frappeColors.subtext1('Done'));
+          outro(frappeColors.subtext1('Done'));
           process.exit(0);
         } else if (action === 'edit') {
           finalMessage = yield* handleEditAction(finalMessage);

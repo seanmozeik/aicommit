@@ -1,5 +1,4 @@
-/* oxlint-disable import/no-namespace */
-import * as p from '@clack/prompts';
+import { log, multiselect, outro, select } from '@clack/prompts';
 import { Effect } from 'effect';
 
 import { stageFiles, getStatus, parseStatusOutput } from './git';
@@ -11,14 +10,14 @@ const SELECT_FILES_VALUE = '__select_files__';
 const SKIP_VALUE = '__skip__';
 
 const cancelSelection = (): never => {
-  p.outro(frappeColors.subtext1('Cancelled'));
+  outro(frappeColors.subtext1('Cancelled'));
   process.exit(0);
   throw new Error('Cancelled');
 };
 
 const handleStageError = (error: unknown): never => {
-  p.log.error(`Failed to stage files: ${error instanceof Error ? error.message : String(error)}`);
-  p.outro(theme.error('Aborted'));
+  log.error(`Failed to stage files: ${error instanceof Error ? error.message : String(error)}`);
+  outro(theme.error('Aborted'));
   process.exit(1);
   throw new Error('Aborted');
 };
@@ -39,7 +38,7 @@ export const selectFilesToStage = Effect.gen(function* selectFilesToStageGen() {
   const action = yield* Effect.tryPromise({
     catch: cancelSelection,
     try: async () => {
-      const result = await p.select({
+      const result = await select({
         message: 'No staged files. What should aic use?',
         options: [
           {
@@ -82,7 +81,7 @@ export const selectFilesToStage = Effect.gen(function* selectFilesToStageGen() {
   const selected = yield* Effect.tryPromise({
     catch: cancelSelection,
     try: async () => {
-      const result = await p.multiselect({
+      const result = await multiselect({
         message: 'Select files to stage:',
         options: changedFiles.map((f) => ({ hint: f.hint, label: f.path, value: f.path })),
       });

@@ -1,5 +1,4 @@
-/* oxlint-disable import/no-namespace */
-import * as p from '@clack/prompts';
+import { confirm, intro, log, outro, spinner } from '@clack/prompts';
 import { Effect, Option } from 'effect';
 import { Argument, Command } from 'effect/unstable/cli';
 
@@ -48,17 +47,17 @@ const interactiveRelease = (
   preset: Option.Option<string>,
 ): Effect.Effect<void, unknown> =>
   Effect.gen(function* interactiveReleaseGen() {
-    p.intro(theme.primary('🚀 Release'));
+    intro(theme.primary('🚀 Release'));
 
     const inRepo = yield* Effect.tryPromise(() => isGitRepo());
     if (!inRepo) {
-      p.outro(theme.error('Not a git repository'));
+      outro(theme.error('Not a git repository'));
       process.exit(1);
     }
 
     const project = yield* detectProject();
     if (!project) {
-      p.outro(theme.error('Could not detect project type'));
+      outro(theme.error('Could not detect project type'));
       process.exit(1);
     }
 
@@ -67,15 +66,15 @@ const interactiveRelease = (
     const currentVersion = project.version;
     const newVersion = bumpVersion(currentVersion, releaseType);
 
-    p.log.info(`Current version: ${currentVersion}`);
-    p.log.info(`New version: ${newVersion}`);
+    log.info(`Current version: ${currentVersion}`);
+    log.info(`New version: ${newVersion}`);
 
-    const confirm = yield* Effect.tryPromise(() =>
-      p.confirm({ message: `Bump version from ${currentVersion} to ${newVersion}?` }),
+    const shouldBump = yield* Effect.tryPromise(() =>
+      confirm({ message: `Bump version from ${currentVersion} to ${newVersion}?` }),
     );
 
-    if (confirm === false) {
-      p.outro(theme.warning('Release cancelled'));
+    if (shouldBump === false) {
+      outro(theme.warning('Release cancelled'));
       process.exit(0);
     }
 
@@ -85,7 +84,7 @@ const interactiveRelease = (
 
     // Update project version
     yield* updateProjectVersion(project, newVersion);
-    p.log.success(`Updated ${project.type} version to ${newVersion}`);
+    log.success(`Updated ${project.type} version to ${newVersion}`);
 
     // Generate changelog
     if (!(yield* Effect.tryPromise(() => Bun.file('CHANGELOG.md').exists()))) {
@@ -96,13 +95,13 @@ const interactiveRelease = (
     );
     const entry = formatChangelogEntry(newVersion, changelogBody);
     yield* Effect.tryPromise(() => writeChangelog(entry));
-    p.log.success('Updated changelog');
+    log.success('Updated changelog');
 
     if (config?.release) {
-      const s = p.spinner();
+      const s = spinner();
       const ok = yield* Effect.tryPromise(() => executeSectionWithProgress('release', config, s));
       if (!ok) {
-        p.outro(theme.error('Release command failed'));
+        outro(theme.error('Release command failed'));
         process.exit(1);
       }
     }
@@ -113,53 +112,53 @@ const interactiveRelease = (
     );
     yield* Effect.tryPromise(() => stageFiles(releaseMetadataFiles));
     yield* Effect.tryPromise(() => commit(`chore(release): ${newVersion}`));
-    p.log.success('Committed version bump and changelog');
+    log.success('Committed version bump and changelog');
 
     // Create tag
     yield* Effect.tryPromise(() => createTag(newVersion));
-    p.log.success(`Created tag ${newVersion}`);
+    log.success(`Created tag ${newVersion}`);
 
     // Push to remote
-    const shouldPush = yield* Effect.tryPromise(() => p.confirm({ message: 'Push to remote?' }));
+    const shouldPush = yield* Effect.tryPromise(() => confirm({ message: 'Push to remote?' }));
 
     if (shouldPush === true) {
       yield* Effect.tryPromise(() => pushWithTags());
-      p.log.success('Pushed to remote');
+      log.success('Pushed to remote');
     }
 
     if (config?.publish) {
       const shouldPublish = yield* Effect.tryPromise(() =>
-        p.confirm({ message: 'Run publish commands?' }),
+        confirm({ message: 'Run publish commands?' }),
       );
       if (shouldPublish === true) {
-        const s = p.spinner();
+        const s = spinner();
         const ok = yield* Effect.tryPromise(() => executeSectionWithProgress('publish', config, s));
         if (!ok) {
-          p.outro(theme.error('Publish command failed'));
+          outro(theme.error('Publish command failed'));
           process.exit(1);
         }
       }
     }
 
-    p.outro(theme.success(`Release ${newVersion} complete!`));
+    outro(theme.success(`Release ${newVersion} complete!`));
   });
 
 const initRelease = Effect.gen(function* initReleaseGen() {
-  p.intro(theme.primary('🔧 Release Configuration'));
+  intro(theme.primary('🔧 Release Configuration'));
 
   const inRepo = yield* Effect.tryPromise(() => isGitRepo());
   if (!inRepo) {
-    p.outro(theme.error('Not a git repository'));
+    outro(theme.error('Not a git repository'));
     process.exit(1);
   }
 
   if (yield* Effect.tryPromise(() => hasAicConfig())) {
-    p.outro(theme.warning('.aic already exists'));
+    outro(theme.warning('.aic already exists'));
     process.exit(0);
   }
 
   yield* Effect.tryPromise(() => initAicConfig('.'));
-  p.outro(theme.success('Release configuration initialized!'));
+  outro(theme.success('Release configuration initialized!'));
 });
 
 const releaseCommand = Command.make('release', {

@@ -1,5 +1,4 @@
-/* oxlint-disable import/no-namespace */
-import * as p from '@clack/prompts';
+import { log, outro } from '@clack/prompts';
 import { Effect, Option } from 'effect';
 import { Command, Flag } from 'effect/unstable/cli';
 
@@ -48,7 +47,7 @@ const validatePreset = (
     const presets = yield* Effect.tryPromise(() => listPresets());
     const allPresets = [...presets, ...BUILT_IN_PRESETS];
     if (selectedPreset && !allPresets.includes(selectedPreset)) {
-      p.outro(theme.error(`Preset "${selectedPreset}" not found. Run: aic setup`));
+      outro(theme.error(`Preset "${selectedPreset}" not found. Run: aic setup`));
       process.exit(1);
     }
 
@@ -64,11 +63,11 @@ const validatePreset = (
 const getDiffOutput = (hasStaged: boolean, headExists: boolean): Effect.Effect<string, unknown> =>
   Effect.gen(function* getDiffOutputGen() {
     if (hasStaged) {
-      p.log.info(frappeColors.subtext1('Using staged files only'));
+      log.info(frappeColors.subtext1('Using staged files only'));
       return yield* Effect.tryPromise(() => getStagedDiff());
     }
     if (!headExists) {
-      p.outro(theme.warning('Initial commit: stage files first with "git add"'));
+      outro(theme.warning('Initial commit: stage files first with "git add"'));
       process.exit(0);
     }
     return yield* Effect.tryPromise(() => getHeadDiff());
@@ -107,7 +106,7 @@ const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unkno
     // Check if we're in a git repo
     const isRepo = yield* Effect.tryPromise(() => isGitRepo());
     if (!isRepo) {
-      p.outro(theme.error('Not a git repository'));
+      outro(theme.error('Not a git repository'));
       process.exit(1);
     }
 
@@ -134,13 +133,13 @@ const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unkno
     try {
       diffOutput = yield* getDiffOutput(hasStaged, headExists);
     } catch (error) {
-      p.log.error(`Failed to get diff: ${error instanceof Error ? error.message : String(error)}`);
-      p.outro(theme.error('Aborted'));
+      log.error(`Failed to get diff: ${error instanceof Error ? error.message : String(error)}`);
+      outro(theme.error('Aborted'));
       process.exit(1);
     }
 
     if (!diffOutput.trim()) {
-      p.outro(frappeColors.subtext1('No changes to commit'));
+      outro(frappeColors.subtext1('No changes to commit'));
       process.exit(0);
     }
 
@@ -150,7 +149,7 @@ const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unkno
     const classified = classifyFiles(parsed.files);
 
     if (classified.included.length === 0 && classified.summarized.length === 0) {
-      p.outro(frappeColors.subtext1('No relevant changes (all files excluded)'));
+      outro(frappeColors.subtext1('No relevant changes (all files excluded)'));
       process.exit(0);
     }
 
@@ -194,7 +193,7 @@ const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unkno
     try {
       commitMessage = yield* Effect.tryPromise(() => aiPromise);
     } catch (error) {
-      p.log.error(error instanceof Error ? error.message : String(error));
+      log.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
 
