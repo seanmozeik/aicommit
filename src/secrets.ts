@@ -1,6 +1,6 @@
 import { KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE } from './constants.js';
 
-export interface Preset {
+interface Preset {
   readonly baseUrl: string;
   readonly apiKey?: string;
   readonly model: string;
@@ -29,7 +29,7 @@ const isSecretBlob = (value: unknown): value is SecretBlob =>
   typeof Reflect.get(value, 'presets') === 'object' &&
   Reflect.get(value, 'presets') !== null &&
   (!('defaultPreset' in value) || typeof Reflect.get(value, 'defaultPreset') === 'string') &&
-  Object.values(Reflect.get(value, 'presets') as Record<string, unknown>).every(isPreset);
+  Object.values(Reflect.get(value, 'presets')).every((preset) => isPreset(preset));
 
 const readKeychainBlob = async (): Promise<SecretBlob> => {
   const raw = await Bun.secrets.get({ name: KEYCHAIN_ACCOUNT, service: KEYCHAIN_SERVICE });
@@ -62,7 +62,7 @@ const savePreset = async (name: string, preset: Preset): Promise<string> => {
 const loadPreset = async (name: string): Promise<Preset> => {
   const keychain = await readKeychainBlob();
   const preset = keychain.presets[name];
-  if (!preset) {
+  if (preset === undefined) {
     throw new Error(`Preset "${name}" not found. Run: aic setup`);
   }
   return preset;
@@ -70,15 +70,15 @@ const loadPreset = async (name: string): Promise<Preset> => {
 
 const deletePreset = async (name: string): Promise<void> => {
   const blob = await readKeychainBlob();
-  delete blob.presets[name];
-  // If deleting default preset, clear it
-  if (blob.defaultPreset === name) {
-    delete blob.defaultPreset;
-  }
+  const { [name]: _removed, ...remainingPresets } = blob.presets;
+  const newBlob: SecretBlob = {
+    defaultPreset: blob.defaultPreset === name ? undefined : blob.defaultPreset,
+    presets: remainingPresets,
+  };
   await Bun.secrets.set({
     name: KEYCHAIN_ACCOUNT,
     service: KEYCHAIN_SERVICE,
-    value: JSON.stringify(blob),
+    value: JSON.stringify(newBlob),
   });
 };
 
@@ -92,11 +92,14 @@ const saveDefaultPreset = async (name: string): Promise<string> => {
   if (!(name in blob.presets)) {
     throw new Error(`Preset "${name}" does not exist`);
   }
-  blob.defaultPreset = name;
+  const newBlob: SecretBlob = {
+    defaultPreset: name,
+    presets: blob.presets,
+  };
   await Bun.secrets.set({
     name: KEYCHAIN_ACCOUNT,
     service: KEYCHAIN_SERVICE,
-    value: JSON.stringify(blob),
+    value: JSON.stringify(newBlob),
   });
   return `${KEYCHAIN_SERVICE}/${KEYCHAIN_ACCOUNT}`;
 };
@@ -106,7 +109,7 @@ const loadDefaultPreset = async (): Promise<string> => {
   return keychain.defaultPreset ?? Object.keys(keychain.presets)[0] ?? '';
 };
 
-const deleteSecretBlob = async (): Promise<boolean> => {
+const deleteSecretBlob = (): Promise<boolean> => {
   return Bun.secrets.delete({ name: KEYCHAIN_ACCOUNT, service: KEYCHAIN_SERVICE });
 };
 

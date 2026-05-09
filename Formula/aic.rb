@@ -5,7 +5,7 @@ class Aic < Formula
   license "MIT"
 
   url "https://github.com/seanmozeik/AICommit/releases/download/v#{version}/aic-#{version}.tar.gz"
-  sha256 "d462e72757ce63fd5f1694cfe1fd3073ad747e20fb099edc046228bca720127d"
+  sha256 "a0a31ea0e9fe81767462cc0daa70788094488faaa91f90c4c980e84aedd5f05d"
 
   depends_on "bun"
 

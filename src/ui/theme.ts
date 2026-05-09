@@ -2,7 +2,6 @@
 
 const ESC = '\u001B';
 const RESET = `${ESC}[0m`;
-const BOLD_ON = `${ESC}[1m`;
 
 // Catppuccin Frappé palette
 const frappe = {
@@ -35,20 +34,11 @@ const frappe = {
 } as const;
 
 const fg = (cssColor: string, text: string): string => {
-  const open = Bun.color(cssColor, 'ansi') ?? '';
-  if (open === '') {
+  const open = Bun.color(cssColor, 'ansi');
+  if (open === undefined || open === '') {
     return text;
   }
   return `${open}${text}${RESET}`;
-};
-
-const _boldFg = (cssColor: string, text: string): string => {
-  const rgb = Bun.color(cssColor, '[rgb]');
-  if (!rgb) {
-    return `${BOLD_ON}${text}${RESET}`;
-  }
-  const [r, g, b] = rgb;
-  return `${ESC}[1;38;2;${r};${g};${b}m${text}${RESET}`;
 };
 
 // Theme colors as functions

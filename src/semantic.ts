@@ -1,4 +1,4 @@
-import type { ClassifiedFiles, FileDiff, SemanticInfo } from '../types.js';
+import type { ClassifiedFiles, FileDiff, SemanticInfo } from './types.js';
 
 const MAX_FUNCTIONS_TO_DISPLAY = 10;
 const MAX_OTHER_TO_DISPLAY = 5;

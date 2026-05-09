@@ -1,3 +1,4 @@
+/* oxlint-disable no-console */
 import gradient from 'gradient-string';
 
 import { gradientColors } from './theme.js';
@@ -26,5 +27,7 @@ export const showBanner = (): void => {
     .join('\n');
 
   console.log(`\n${bannerGradient(indentedBanner)}`);
-  console.log(); // Spacing after banner
+
+  // Spacing after banner
+  console.log();
 };

@@ -1,3 +1,4 @@
+/* oxlint-disable no-console */
 import boxen from 'boxen';
 import gradient from 'gradient-string';
 
@@ -9,6 +10,10 @@ import { boxColors, frappeColors, gradientColors, theme } from './theme.js';
 const BAR_WIDTH = 12;
 const FILLED_CHAR = '█';
 const EMPTY_CHAR = '░';
+const MAX_PATH_LENGTH = 28;
+const PATH_TRUNCATE_LENGTH = 25;
+const SEPARATOR_LENGTH = 60;
+const DEFAULT_COMMIT_COUNT = 3;
 
 // Gradient for bars
 const addGradient = gradient([...gradientColors.success]);
@@ -39,41 +44,51 @@ const generateBar = (additions: number, deletions: number, maxChanges: number): 
 /**
  * Format a single file entry with stats and visual bar
  */
-function formatFileWithBar(
+const formatFileWithBar = (
   file: FileDiff,
   maxChanges: number,
   maxAddWidth: number,
   maxDelWidth: number,
-): string {
-  const statusChar = file.status === 'added' ? '+' : (file.status === 'deleted' ? '-' : '~');
-  const statusColor =
-    file.status === 'added'
-      ? theme.added
-      : (file.status === 'deleted'
-        ? theme.removed
-        : theme.modified);
+): string => {
+  let statusChar: string;
+  if (file.status === 'added') {
+    statusChar = '+';
+  } else if (file.status === 'deleted') {
+    statusChar = '-';
+  } else {
+    statusChar = '~';
+  }
+
+  let statusColor: (s: string) => string;
+  if (file.status === 'added') {
+    statusColor = theme.added;
+  } else if (file.status === 'deleted') {
+    statusColor = theme.removed;
+  } else {
+    statusColor = theme.modified;
+  }
 
   // Pad numbers BEFORE applying color for proper alignment
   const addStr = `+${file.additions}`.padStart(maxAddWidth + 1);
   const delStr = `-${file.deletions}`.padStart(maxDelWidth + 1);
 
-  const adds = file.additions > 0 ? theme.added(addStr) : frappe.surface2(addStr);
-  const dels = file.deletions > 0 ? theme.removed(delStr) : frappe.surface2(delStr);
+  const adds = file.additions > 0 ? theme.added(addStr) : frappeColors.surface2(addStr);
+  const dels = file.deletions > 0 ? theme.removed(delStr) : frappeColors.surface2(delStr);
   const bar = generateBar(file.additions, file.deletions, maxChanges);
 
   // Truncate long paths
   let path = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
-  if (path.length > 28) {
-    path = `...${path.slice(-25)}`;
+  if (path.length > MAX_PATH_LENGTH) {
+    path = `...${path.slice(-PATH_TRUNCATE_LENGTH)}`;
   }
 
-  return `${statusColor(statusChar)} ${theme.heading(path.padEnd(28))} ${adds} ${dels}  ${bar}`;
-}
+  return `${statusColor(statusChar)} ${theme.heading(path.padEnd(MAX_PATH_LENGTH))} ${adds} ${dels}  ${bar}`;
+};
 
 /**
  * Format file stats as badges
  */
-function formatFileBadges(files: ClassifiedFiles): string {
+const formatFileBadges = (files: ClassifiedFiles): string => {
   const { included, summarized, excluded } = files;
 
   const added = included.filter((f) => f.status === 'added').length;
@@ -98,36 +113,31 @@ function formatFileBadges(files: ClassifiedFiles): string {
   }
 
   return badges.join('  ');
-}
+};
 
 /**
  * Format line count stats
  */
-function formatLineStats(totalAdditions: number, totalDeletions: number): string {
+const formatLineStats = (totalAdditions: number, totalDeletions: number): string => {
   return `${theme.added(`+${totalAdditions}`)} ${theme.removed(`-${totalDeletions}`)} lines`;
-}
+};
 
 /**
  * Filter out submodules from file list
  */
-function filterSubmodules(files: FileDiff[], submodulePaths: Set<string>): FileDiff[] {
+const filterSubmodules = (files: FileDiff[], submodulePaths: Set<string>): FileDiff[] => {
   return files.filter((f) => !submodulePaths.has(f.path));
-}
+};
 
 /**
- * Display the context panel with files (stats + visual bars) and commit history
+ * Display the files section of the context panel
  */
-export const displayContextPanel = async (
+const displayFilesSection = (
   files: ClassifiedFiles,
+  filteredIncluded: FileDiff[],
   totalAdditions: number,
   totalDeletions: number,
-): Promise<void> => {
-  // Get submodule paths to filter
-  const submodulePaths = await getSubmodulePaths();
-
-  // Filter out submodules
-  const filteredIncluded = filterSubmodules(files.included, submodulePaths);
-
+): void => {
   // Calculate max values for alignment and scaling
   const maxChanges = Math.max(...filteredIncluded.map((f) => f.additions + f.deletions), 1);
   const maxAddWidth = Math.max(...filteredIncluded.map((f) => String(f.additions).length), 1);
@@ -137,13 +147,9 @@ export const displayContextPanel = async (
   const filesBadges = formatFileBadges({ ...files, included: filteredIncluded });
   const lineStats = formatLineStats(totalAdditions, totalDeletions);
 
-  const fileLines = filteredIncluded.map((f) =>
-    formatFileWithBar(f, maxChanges, maxAddWidth, maxDelWidth),
-  );
+  const fileLines = filteredIncluded.map((f) => formatFileWithBar(f, maxChanges, maxAddWidth, maxDelWidth));
 
-  const filesContent = [filesBadges, frappeColors.surface2('─'.repeat(60)), ...fileLines].join(
-    '\n',
-  );
+  const filesContent = [filesBadges, frappeColors.surface2('─'.repeat(SEPARATOR_LENGTH)), ...fileLines].join('\n');
 
   const filesBox = boxen(filesContent, {
     borderColor: boxColors.default,
@@ -153,9 +159,14 @@ export const displayContextPanel = async (
     titleAlignment: 'left',
   });
   console.log(filesBox);
+};
 
+/**
+ * Display the recent commits section of the context panel
+ */
+const displayCommitsSection = async (): Promise<void> => {
   // Section 2: Recent commits for style reference
-  const commits = await getRecentCommits(3);
+  const commits = await getRecentCommits(DEFAULT_COMMIT_COUNT);
   if (commits.length > 0) {
     const commitsContent = commits
       .map((commit) => {
@@ -175,8 +186,27 @@ export const displayContextPanel = async (
     });
     console.log(commitsBox);
   }
+};
 
-  console.log(); // Add spacing after context panel
+/**
+ * Display the context panel with files (stats + visual bars) and commit history
+ */
+export const displayContextPanel = async (
+  files: ClassifiedFiles,
+  totalAdditions: number,
+  totalDeletions: number,
+): Promise<void> => {
+  // Get submodule paths to filter
+  const submodulePaths = await getSubmodulePaths();
+
+  // Filter out submodules
+  const filteredIncluded = filterSubmodules(files.included, submodulePaths);
+
+  displayFilesSection(files, filteredIncluded, totalAdditions, totalDeletions);
+  await displayCommitsSection();
+
+  // Add spacing after context panel
+  console.log();
 };
 
 /**

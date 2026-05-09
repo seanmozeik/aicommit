@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { BunServices } from '@effect/platform-bun';
-import { Effect, Layer, Logger, type LogLevel } from 'effect';
+import { Effect, Layer, Logger } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
 import pkg from '../package.json' with { type: 'json' };
@@ -40,9 +40,6 @@ const stderrLogger = Logger.make(({ logLevel, message }) => {
   process.stderr.write(`[${logLevel.toLowerCase()}] ${text}\n`);
 });
 
-const verbose = process.argv.includes('--verbose') || process.argv.includes('-v');
-const _minLogLevel: LogLevel.LogLevel = verbose ? 'Debug' : 'Warn';
-
 const runtimeLayer = Layer.mergeAll(BunServices.layer, Logger.layer([stderrLogger]));
 
 const writeBoundaryError = (error: unknown): void => {
@@ -52,7 +49,7 @@ const writeBoundaryError = (error: unknown): void => {
 };
 
 try {
-  await Effect.runPromise(program.pipe(Effect.provide(runtimeLayer)));
+  await Effect.runPromise(program.pipe(Effect.provide(runtimeLayer)) as Effect.Effect<void, never, never>);
 } catch (error) {
   writeBoundaryError(error);
 }

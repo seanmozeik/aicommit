@@ -1,14 +1,14 @@
+/* oxlint-disable import/no-namespace */
 import * as p from '@clack/prompts';
 import { Effect } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
-import type { Preset } from './secrets.js';
-import { listPresets, loadDefaultPreset, saveDefaultPreset, savePreset } from './secrets.js';
+import { listPresets, loadDefaultPreset, saveDefaultPreset, savePreset, type Preset } from './secrets.js';
 import { showBanner } from './ui/banner.js';
 import { frappeColors, theme } from './ui/theme.js';
 
 export const setupCommand = Command.make('setup', {}, () =>
-  Effect.gen(function* setupCommand() {
+  Effect.gen(function* setupCommandGen() {
     showBanner();
     p.intro(frappeColors.text('Setup AI Presets'));
     p.note(
@@ -123,7 +123,6 @@ export const setupCommand = Command.make('setup', {}, () =>
             if (existingPresets.includes(v.trim())) {
               return 'Preset name already exists';
             }
-            return;
           },
         }) as Promise<string>,
     });
@@ -140,7 +139,6 @@ export const setupCommand = Command.make('setup', {}, () =>
             if (!v.includes('://')) {
               return 'Invalid URL (must include http:// or https://)';
             }
-            return;
           },
         }) as Promise<string>,
     });

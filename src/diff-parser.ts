@@ -1,4 +1,4 @@
-import type { ClassifiedFiles, FileDiff, ParsedDiff } from '../types.js';
+import type { ClassifiedFiles, FileDiff, ParsedDiff } from './types.js';
 
 // Patterns for files to exclude from diff analysis
 const EXCLUDED_PATTERNS = [
@@ -32,7 +32,7 @@ const parseFileDiff = (fileDiff: string): FileDiff | null => {
 
   // Parse paths from "a/path b/path"
   const pathMatch = /a\/(.+?) b\/(.+)/u.exec(headerLine);
-  if (!pathMatch) {
+  if (pathMatch === null) {
     return null;
   }
 
@@ -85,14 +85,11 @@ const parseUnifiedDiff = (diffOutput: string): ParsedDiff => {
 
   for (const fileDiff of fileDiffs) {
     const parsed = parseFileDiff(fileDiff);
-    if (!parsed) {
-      // Skip invalid file diffs
-      continue;
+    if (parsed) {
+      totalAdditions += parsed.additions;
+      totalDeletions += parsed.deletions;
+      files.push(parsed);
     }
-
-    totalAdditions += parsed.additions;
-    totalDeletions += parsed.deletions;
-    files.push(parsed);
   }
 
   return { files, totalAdditions, totalDeletions };
@@ -152,22 +149,20 @@ const compressDiffs = (files: FileDiff[]): string => {
   for (const file of files) {
     if (file.status === 'deleted') {
       diffs.push(`--- ${file.path} (deleted)`);
-      continue;
+    } else {
+      const remainingBudget = MAX_TOTAL_DIFF_LINES - totalLines;
+      const fileBudget = Math.min(MAX_LINES_PER_FILE, remainingBudget);
+
+      if (fileBudget <= 0) {
+        diffs.push(`--- ${file.path} (omitted)`);
+      } else {
+        const truncated = truncateDiff(file.diff, fileBudget);
+        totalLines += truncated.split('\n').length;
+
+        const header = file.oldPath ? `${file.oldPath} -> ${file.path}` : file.path;
+        diffs.push(`--- ${header}\n${truncated}`);
+      }
     }
-
-    const remainingBudget = MAX_TOTAL_DIFF_LINES - totalLines;
-    const fileBudget = Math.min(MAX_LINES_PER_FILE, remainingBudget);
-
-    if (fileBudget <= 0) {
-      diffs.push(`--- ${file.path} (omitted)`);
-      continue;
-    }
-
-    const truncated = truncateDiff(file.diff, fileBudget);
-    totalLines += truncated.split('\n').length;
-
-    const header = file.oldPath ? `${file.oldPath} -> ${file.path}` : file.path;
-    diffs.push(`--- ${header}\n${truncated}`);
   }
 
   return diffs.join('\n\n');

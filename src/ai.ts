@@ -19,7 +19,7 @@ const DEFAULT_TEMPERATURE = 0.2;
  * Generate commit message with Claude CLI (subprocess call)
  */
 const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErrorClass> =>
-  Effect.gen(function* () {
+  Effect.gen(function* generateWithClaudeGen() {
     yield* Effect.log('Generating commit message with Claude CLI');
     const proc = Bun.spawn(['claude', '--model', 'haiku', '-p', prompt], {
       stderr: 'pipe',
@@ -27,7 +27,7 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
     });
     const exitCode = yield* Effect.tryPromise({
       catch: (error) =>
-        new ClaudeCliErrorClass({ exitCode: -1, message: `Failed to get exit code: ${error}` }),
+        new ClaudeCliErrorClass({ exitCode: -1, message: `Failed to get exit code: ${error instanceof Error ? error.message : JSON.stringify(error)}` }),
       try: () => proc.exited,
     });
     if (exitCode !== 0) {
@@ -39,7 +39,7 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
     }
     const text = yield* Effect.tryPromise({
       catch: (error) =>
-        new ClaudeCliErrorClass({ exitCode, message: `Failed to read stdout: ${error}` }),
+        new ClaudeCliErrorClass({ exitCode, message: `Failed to read stdout: ${error instanceof Error ? error.message : JSON.stringify(error)}` }),
       try: () => new Response(proc.stdout).text(),
     });
     const trimmed = text.trim();
@@ -54,7 +54,7 @@ const buildApiRequest = (
   prompt: string,
   preset: Preset,
 ): { apiUrl: string; body: string; headers: Record<string, string> } => {
-  const cleanBaseUrl = preset.baseUrl.replace(/\/$/u);
+  const cleanBaseUrl = preset.baseUrl.replace(/\/$/u, '');
   const apiUrl = preset.baseUrl.includes('/v1')
     ? preset.baseUrl
     : `${cleanBaseUrl}/v1/chat/completions`;
@@ -99,16 +99,12 @@ const fetchApiResponse = (request: {
 const parseApiResponse = (
   response: Response,
 ): Effect.Effect<{ content: string }, OpenAiApiErrorClass | ApiResponseErrorClass> =>
-  Effect.gen(function* () {
+  Effect.gen(function* parseApiResponseGen() {
     if (!response.ok) {
-      const errorText = yield* Effect.tryPromise({
-        catch: () => 'Unknown error',
-        try: () => response.text(),
-      });
-      yield* Effect.logError(`API request failed: ${response.status} ${errorText}`);
+      yield* Effect.logError(`API request failed: ${response.status}`);
       return yield* new OpenAiApiErrorClass({
-        error: errorText,
-        message: errorText,
+        error: new Error(`API request failed: ${response.status}`),
+        message: `API request failed: ${response.status}`,
         statusCode: response.status,
       });
     }
@@ -120,7 +116,10 @@ const parseApiResponse = (
           message: 'Failed to parse API response',
           statusCode: response.status,
         }),
-      try: () => response.json() as Promise<{ choices: { message: { content: string } }[] }>,
+      try: async () => {
+        const json = await response.json();
+        return json as { choices: { message: { content: string } }[] };
+      },
     });
 
     const content = data.choices[0]?.message?.content;
@@ -137,7 +136,7 @@ const generateWithOpenAICompatible = (
   prompt: string,
   preset: Preset,
 ): Effect.Effect<string, OpenAiApiErrorClass | ApiResponseErrorClass> =>
-  Effect.gen(function* () {
+  Effect.gen(function* generateWithOpenAICompatibleGen() {
     yield* Effect.log(`Generating commit message with OpenAI-compatible API: ${preset.baseUrl}`);
     const request = buildApiRequest(prompt, preset);
     const response = yield* fetchApiResponse(request);
