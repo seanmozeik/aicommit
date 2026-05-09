@@ -1,2 +1,12 @@
-# Project-specific aic configuration
-# Customize AI presets and other settings for this project
+# AICommit release flow for this repo
+
+[ignore]
+dist/**
+artifacts/**
+aic
+
+[release]
+bun run build
+
+[publish]
+npm publish

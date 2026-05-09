@@ -3,6 +3,7 @@ import * as p from '@clack/prompts';
 import { Effect, Option } from 'effect';
 import { Command, Flag } from 'effect/unstable/cli';
 
+import { parseAicConfig } from './aic-script';
 import { showActionMenu } from './cli-commit-actions';
 import { selectFilesToStage } from './cli-commit-file-selection';
 import {
@@ -13,6 +14,7 @@ import {
   type GenerationPreset,
   type GenerationInput,
 } from './cli-commit-generation.js';
+import { filterIgnoredDiffs } from './diff-ignore';
 import { classifyFiles, compressDiffs, parseUnifiedDiff } from './diff-parser';
 import {
   cdToGitRoot,
@@ -143,7 +145,8 @@ const commitHandler = (preset: Option.Option<string>): Effect.Effect<void, unkno
     }
 
     // Parse and classify files
-    const parsed = parseUnifiedDiff(diffOutput);
+    const aicConfig = yield* Effect.tryPromise(() => parseAicConfig());
+    const { parsed } = filterIgnoredDiffs(parseUnifiedDiff(diffOutput), aicConfig?.ignore ?? []);
     const classified = classifyFiles(parsed.files);
 
     if (classified.included.length === 0 && classified.summarized.length === 0) {

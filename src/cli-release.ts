@@ -3,8 +3,18 @@ import * as p from '@clack/prompts';
 import { Effect } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
-import { hasAicConfig, initAicConfig, parseAicConfig } from './aic-script';
-import { formatChangelogEntry, initializeChangelog, writeChangelog } from './changelog';
+import {
+  executeSectionWithProgress,
+  hasAicConfig,
+  initAicConfig,
+  parseAicConfig,
+} from './aic-script';
+import {
+  formatChangelogEntry,
+  generateChangelog,
+  initializeChangelog,
+  writeChangelog,
+} from './changelog';
 import { commit, createTag, getLatestTag, isGitRepo, pushWithTags, stageFiles } from './git';
 import { bumpVersion, detectProject, updateProjectVersion } from './project';
 import type { ReleaseType } from './types';
@@ -25,7 +35,7 @@ const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
     process.exit(1);
   }
 
-  await getLatestTag();
+  const latestTag = await getLatestTag();
   const currentVersion = project.version;
   const newVersion = bumpVersion(currentVersion, releaseType);
 
@@ -41,23 +51,32 @@ const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
     process.exit(0);
   }
 
+  const config = (await hasAicConfig()) ? await parseAicConfig() : null;
+
   // Update project version
   await updateProjectVersion(project, newVersion);
   p.log.success(`Updated ${project.type} version to ${newVersion}`);
 
   // Generate changelog
-  if (await hasAicConfig()) {
-    const config = await parseAicConfig();
-    if (config?.release) {
-      await initializeChangelog();
-      const entry = formatChangelogEntry(newVersion, '');
-      await writeChangelog(entry);
-      p.log.success('Updated changelog');
+  if (!(await Bun.file('CHANGELOG.md').exists())) {
+    await initializeChangelog();
+  }
+  const changelogBody = await generateChangelog(newVersion, latestTag);
+  const entry = formatChangelogEntry(newVersion, changelogBody);
+  await writeChangelog(entry);
+  p.log.success('Updated changelog');
+
+  if (config?.release) {
+    const s = p.spinner();
+    const ok = await executeSectionWithProgress('release', config, s);
+    if (!ok) {
+      p.outro(theme.error('Release command failed'));
+      process.exit(1);
     }
   }
 
   // Commit changes
-  await stageFiles(['CHANGELOG.md']);
+  await stageFiles([...project.metadataFiles, 'CHANGELOG.md']);
   await commit(`chore(release): ${newVersion}`);
   p.log.success('Committed version bump and changelog');
 
@@ -68,7 +87,7 @@ const interactiveRelease = async (releaseType: ReleaseType): Promise<void> => {
   // Push to remote
   const shouldPush = await p.confirm({ message: 'Push to remote?' });
 
-  if (shouldPush) {
+  if (shouldPush === true) {
     await pushWithTags();
     p.log.success('Pushed to remote');
   }

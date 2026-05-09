@@ -53,29 +53,18 @@ const executeCommand = async (
     readonly onOutput?: (output: string) => void;
   },
 ): Promise<boolean> => {
-  const proc = Bun.spawn({ cmd: ['sh', '-c', cmd], stderr: 'pipe', stdout: 'pipe' });
-
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-
+  const proc = Bun.spawn({
+    cmd: ['sh', '-c', cmd],
+    stderr: 'inherit',
+    stdin: 'inherit',
+    stdout: 'inherit',
+  });
   const exitCode = await proc.exited;
-
-  if (stdout.trim()) {
-    options.onOutput?.(stdout.trim());
-  }
-
   if (exitCode !== 0) {
-    const error = stderr.trim() || `Command exited with code ${exitCode}`;
-    options.onError?.(error);
+    options.onError?.(`Command exited with code ${exitCode}`);
     return false;
   }
-
-  if (stderr.trim() && exitCode === 0) {
-    options.onOutput?.(stderr.trim());
-  }
-
+  options.onOutput?.(`Command completed: ${cmd}`);
   return true;
 };
 
@@ -129,10 +118,13 @@ const executeSectionWithProgress = async (
     index += 1;
     s.start(`Running command ${index}/${total}...`);
 
-    const proc = Bun.spawn({ cmd: ['sh', '-c', cmd], stderr: 'pipe', stdout: 'pipe' });
-
-    await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
-
+    s.stop(`Running command ${index}/${total}: ${cmd}`);
+    const proc = Bun.spawn({
+      cmd: ['sh', '-c', cmd],
+      stderr: 'inherit',
+      stdin: 'inherit',
+      stdout: 'inherit',
+    });
     const exitCode = await proc.exited;
 
     if (exitCode !== 0) {
@@ -150,6 +142,10 @@ const executeSectionWithProgress = async (
 const DEFAULT_TEMPLATE = `# AICommit Release Configuration
 # Commands run during release process
 
+[ignore]
+# Files or globs to omit from AI diff context
+# Example: generated/**
+
 [release]
 # Add your build commands here
 # Example: npm run build
@@ -161,6 +157,9 @@ const DEFAULT_TEMPLATE = `# AICommit Release Configuration
 
 const GO_TEMPLATE = `# AICommit Release Configuration
 
+[ignore]
+# generated/**
+
 [release]
 go build -o dist/
 go test ./...
@@ -171,6 +170,9 @@ go test ./...
 
 const NODE_TEMPLATE = `# AICommit Release Configuration
 
+[ignore]
+# generated/**
+
 [release]
 bun run build
 
@@ -179,6 +181,9 @@ bun run build
 `;
 
 const PYTHON_TEMPLATE = `# AICommit Release Configuration
+
+[ignore]
+# generated/**
 
 [release]
 python -m build
@@ -189,6 +194,9 @@ twine upload dist/*
 `;
 
 const RUST_TEMPLATE = `# AICommit Release Configuration
+
+[ignore]
+# generated/**
 
 [release]
 cargo build --release
@@ -207,11 +215,12 @@ export const getDefaultAicTemplate = (projectType: string): string => {
     rust: RUST_TEMPLATE,
   };
 
-  return templates[projectType] ?? templates.default;
+  return templates[projectType] ?? templates['default'];
 };
 
-export const initAicConfig = async (projectType: string): Promise<void> =>
-  Bun.write(AIC_CONFIG_PATH, getDefaultAicTemplate(projectType));
+export const initAicConfig = async (projectType: string): Promise<void> => {
+  await Bun.write(AIC_CONFIG_PATH, getDefaultAicTemplate(projectType));
+};
 
 export {
   executeSection,

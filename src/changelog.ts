@@ -1,6 +1,16 @@
+import { $ } from 'bun';
+
 import type { ChangelogEntry } from './types';
 
 const CHANGELOG_PATH = 'CHANGELOG.md';
+const CONVENTIONAL_COMMIT_RE =
+  /^(feat|fix|perf|refactor|docs|test|build|ci|chore|style|revert)(?:\(([^)]+)\))?!?:\s+(.+)/u;
+const COMMIT_TYPE_GROUP = 1;
+const COMMIT_SCOPE_GROUP = 2;
+const COMMIT_DESCRIPTION_GROUP = 3;
+const CHANGELOG_SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed'] as const;
+
+type ChangelogSection = (typeof CHANGELOG_SECTIONS)[number];
 const CHANGELOG_HEADER = `# Changelog
 
 All notable changes to this project will be documented in this file.
@@ -29,24 +39,24 @@ const writeChangelog = async (newEntry: string): Promise<void> => {
   const existingContent = await readChangelog();
   const hasHeader = /^# Changelog[\s\S]*?\n\n/u.exec(existingContent);
 
-  if (!hasHeader) {
-    const rest = existingContent.startsWith('#') ? '' : existingContent;
-    await Bun.write(CHANGELOG_PATH, CHANGELOG_HEADER + newEntry + rest);
-    return;
-  }
-
-  const firstEntryMatch = /\n## \[/u.exec(existingContent);
-
-  if (firstEntryMatch?.index !== undefined) {
+  if (hasHeader) {
+    const firstEntryMatch = /\n## \[/u.exec(existingContent);
+    if (firstEntryMatch?.index === undefined) {
+      await Bun.write(CHANGELOG_PATH, existingContent + newEntry);
+      return;
+    }
     const header = existingContent.slice(0, firstEntryMatch.index + 1);
     const rest = existingContent.slice(firstEntryMatch.index + 1);
     await Bun.write(CHANGELOG_PATH, header + newEntry + rest);
   } else {
-    await Bun.write(CHANGELOG_PATH, existingContent + newEntry);
+    const rest = existingContent.startsWith('#') ? '' : existingContent;
+    await Bun.write(CHANGELOG_PATH, CHANGELOG_HEADER + newEntry + rest);
   }
 };
 
-const initializeChangelog = (): Promise<void> => Bun.write(CHANGELOG_PATH, CHANGELOG_HEADER);
+const initializeChangelog = async (): Promise<void> => {
+  await Bun.write(CHANGELOG_PATH, CHANGELOG_HEADER);
+};
 
 const extractSection = (content: string, sectionName: string): string[] => {
   const pattern = new RegExp(`### ${sectionName}\\n([\\s\\S]*?)(?=### |$)`, 'iu');
@@ -71,8 +81,7 @@ const parseChangelog = (content: string): ChangelogEntry[] => {
   let index = 0;
 
   while (match !== null) {
-    const version = match[1] ?? '';
-    const date = match[2] ?? '';
+    const [, version, date] = match;
     const sectionContent = sections[index + 1] ?? '';
 
     const entry: ChangelogEntry = {
@@ -116,8 +125,67 @@ const detectChangelogConvention = async (): Promise<'keepachangelog' | 'other' |
   return 'none';
 };
 
-const generateChangelog = async (_newVersion: string, _fromRef: string | null): Promise<string> => {
-  return '### Added\n- Placeholder changelog entry\n\n### Fixed\n- Placeholder fix entry\n';
+const getCommitMessagesSince = async (fromRef: string | null): Promise<string[]> => {
+  try {
+    const output =
+      fromRef === null
+        ? await $`git log --format=%s`.text()
+        : await $`git log ${fromRef}..HEAD --format=%s`.text();
+    return output.trim().split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const formatCommitForChangelog = (message: string): { section: ChangelogSection; text: string } => {
+  const match = CONVENTIONAL_COMMIT_RE.exec(message);
+  if (match === null) {
+    return { section: 'Changed', text: message };
+  }
+
+  const type = match.at(COMMIT_TYPE_GROUP) ?? 'chore';
+  const scope = match.at(COMMIT_SCOPE_GROUP);
+  const description = match.at(COMMIT_DESCRIPTION_GROUP) ?? message;
+  const scoped =
+    scope === undefined || scope.trim() === '' ? description : `${scope}: ${description}`;
+  switch (type) {
+    case 'feat': {
+      return { section: 'Added', text: scoped };
+    }
+    case 'fix': {
+      return { section: 'Fixed', text: scoped };
+    }
+    case 'revert': {
+      return { section: 'Removed', text: scoped };
+    }
+    default: {
+      return { section: 'Changed', text: scoped };
+    }
+  }
+};
+
+const renderChangelogSections = (sections: Partial<Record<ChangelogSection, string[]>>): string => {
+  const rendered: string[] = [];
+  for (const section of CHANGELOG_SECTIONS) {
+    const sectionEntries = sections[section];
+    const entries = sectionEntries === undefined ? [] : [...new Set(sectionEntries)];
+    if (entries.length > 0) {
+      rendered.push(`### ${section}\n\n${entries.map((entry) => `- ${entry}`).join('\n')}`);
+    }
+  }
+  return rendered.join('\n\n');
+};
+
+const generateChangelog = async (_newVersion: string, fromRef: string | null): Promise<string> => {
+  const commits = await getCommitMessagesSince(fromRef);
+  const sections: Partial<Record<ChangelogSection, string[]>> = {};
+
+  for (const commitMessage of commits) {
+    const { section, text } = formatCommitForChangelog(commitMessage);
+    sections[section] = [...(sections[section] ?? []), text];
+  }
+
+  return renderChangelogSections(sections) || '### Changed\n\n- Release maintenance updates';
 };
 
 export {

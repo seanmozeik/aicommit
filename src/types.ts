@@ -53,6 +53,8 @@ export interface ChangelogEntry {
 }
 
 export interface AicConfig {
+  // Files or glob patterns to ignore when building diffs
+  ignore?: string[];
   // Commands to run during release
   release?: string[];
   // Commands to run during build

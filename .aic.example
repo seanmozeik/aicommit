@@ -1,23 +1,18 @@
 # Example .aic configuration file
-# This file can be used to configure project-specific settings for aic
+# Project-local release flow and AI diff filtering for aic.
 
-[project]
-# Project-specific settings (optional)
-# These can be used to customize aic behavior per project
+[ignore]
+# Files or globs to omit from AI diff context.
+# Useful for generated files, build artifacts, vendored code, snapshots, or
+# project files that are always noisy and never useful for commit messages.
+dist/**
+artifacts/**
+generated/**
 
-[presets]
-# You can define preset overrides here that apply to this project
-# These override the keychain presets if they have the same name
+[release]
+# Commands run during `aic release` after the version bump and before commit/tag.
+bun run build
 
-# Example project-specific preset:
-# myproject-local = {
-#   baseUrl = "http://localhost:1234/v1"
-#   model = "my-local-model"
-#   contextWindow = 512
-# }
-
-[ai]
-# AI generation settings (optional)
-# max_tokens = 256
-# temperature = 0.2
-# timeout_seconds = 30
+[publish]
+# Commands for project-specific publishing flows.
+# npm publish
