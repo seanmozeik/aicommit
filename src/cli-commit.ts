@@ -1,10 +1,17 @@
-/* oxlint-disable exports-last, import/no-namespace */
+/* oxlint-disable import/no-namespace */
 import * as p from '@clack/prompts';
 import { Effect, Option } from 'effect';
 import { Command, Flag } from 'effect/unstable/cli';
 
-
-import { classifyFiles, compressDiffs, parseUnifiedDiff } from './diff-parser.js';
+import { showActionMenu } from './cli-commit-actions';
+import { selectFilesToStage } from './cli-commit-file-selection';
+import {
+  generateCommitMessage,
+  selectCommitType,
+  selectUserDescription,
+  type GenerationInput,
+} from './cli-commit-generation.js';
+import { classifyFiles, compressDiffs, parseUnifiedDiff } from './diff-parser';
 import {
   cdToGitRoot,
   getHeadDiff,
@@ -14,23 +21,17 @@ import {
   hasHead,
   isGitRepo,
 } from './git.js';
-import { loadDefaultPreset, loadPreset, listPresets, type Preset } from './secrets.js';
-import { extractSemantics, formatStats } from './semantic.js';
-import { showBanner } from './ui/banner.js';
-import { displayCommitMessage, displayContextPanel } from './ui/context-panel.js';
-import { frappeColors, theme } from './ui/theme.js';
-import { selectFilesToStage } from './cli-commit-file-selection.js';
-import {
-  generateCommitMessage,
-  selectCommitType,
-  selectUserDescription,
-  type GenerationInput,
-} from './cli-commit-generation.js';
-import { showActionMenu } from './cli-commit-actions.js';
+import { loadDefaultPreset, loadPreset, listPresets, type Preset } from './secrets';
+import { extractSemantics, formatStats } from './semantic';
+import { showBanner } from './ui/banner';
+import { displayCommitMessage, displayContextPanel } from './ui/context-panel';
+import { frappeColors, theme } from './ui/theme';
 
 const DEFAULT_RECENT_COMMITS_COUNT = 3;
 
-const validatePreset = (preset: Option.Option<string>): Effect.Effect<{ presetConfig: Preset | null; presetName: string }, unknown> =>
+const validatePreset = (
+  preset: Option.Option<string>,
+): Effect.Effect<{ presetConfig: Preset | null; presetName: string }, unknown> =>
   Effect.gen(function* validatePresetGen() {
     const configDefault = yield* Effect.tryPromise(() => loadDefaultPreset());
     const selectedPreset = Option.getOrElse(preset, () => configDefault);
@@ -50,7 +51,7 @@ const validatePreset = (preset: Option.Option<string>): Effect.Effect<{ presetCo
     const isClaudePreset = presetName === 'claude';
     const presetConfig = isClaudePreset
       ? null
-      : yield* Effect.tryPromise(() => loadPreset(presetName as string));
+      : yield* Effect.tryPromise(() => loadPreset(presetName));
 
     return { presetConfig, presetName };
   });
@@ -61,7 +62,7 @@ const getDiffOutput = (hasStaged: boolean, headExists: boolean): Effect.Effect<s
       p.log.info(frappeColors.subtext1('Using staged files only'));
       return yield* Effect.tryPromise(() => getStagedDiff());
     }
-    if (headExists === false) {
+    if (!headExists) {
       p.outro(theme.warning('Initial commit: stage files first with "git add"'));
       process.exit(0);
     }
@@ -131,7 +132,9 @@ export const commitCommand = Command.make(
       try {
         diffOutput = yield* getDiffOutput(hasStaged, headExists);
       } catch (error) {
-        p.log.error(`Failed to get diff: ${error instanceof Error ? error.message : error}`);
+        p.log.error(
+          `Failed to get diff: ${error instanceof Error ? error.message : String(error)}`,
+        );
         p.outro(theme.error('Aborted'));
         process.exit(1);
       }
@@ -157,7 +160,9 @@ export const commitCommand = Command.make(
       const semantics = extractSemantics(classified.included);
       const compressedDiffs = compressDiffs(classified.included);
       const stats = formatStats(classified, parsed.totalAdditions, parsed.totalDeletions);
-      const recentCommits = yield* Effect.tryPromise(() => getRecentCommitMessages(DEFAULT_RECENT_COMMITS_COUNT));
+      const recentCommits = yield* Effect.tryPromise(() =>
+        getRecentCommitMessages(DEFAULT_RECENT_COMMITS_COUNT),
+      );
 
       // Helper to generate commit message with spinner
       const generateMessage = generateCommitMessage({
@@ -169,7 +174,7 @@ export const commitCommand = Command.make(
         selectedType,
         semantics,
         stats,
-        userInput: userInput ?? '',
+        userInput,
       } as GenerationInput);
 
       // Start AI generation in background immediately (runs while we display panels)

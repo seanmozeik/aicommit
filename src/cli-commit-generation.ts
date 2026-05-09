@@ -9,9 +9,9 @@ import {
   generateWithOpenAICompatible,
   validateMessage,
 } from './ai.js';
-import type { Preset } from './secrets.js';
-import type { SemanticInfo } from './types.js';
-import { frappeColors, theme } from './ui/theme.js';
+import type { Preset } from './secrets';
+import type { SemanticInfo } from './types';
+import { frappeColors, theme } from './ui/theme';
 
 export interface GenerationInput {
   compressedDiffs: string;
@@ -25,9 +25,7 @@ export interface GenerationInput {
   userInput: string;
 }
 
-export const generateCommitMessage = (
-  input: GenerationInput,
-): Effect.Effect<string> =>
+export const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
   Effect.gen(function* generateCommitMessageGen() {
     const {
       compressedDiffs,
@@ -54,9 +52,9 @@ export const generateCommitMessage = (
     const s = p.spinner();
     s.start(frappeColors.subtext1(`Generating with preset "${presetName}"...`));
 
-    const message = yield* (presetConfig === null
+    const message = yield* presetConfig === null
       ? generateWithClaude(prompt)
-      : generateWithOpenAICompatible(prompt, presetConfig));
+      : generateWithOpenAICompatible(prompt, presetConfig);
 
     const validated = validateMessage(message);
     s.stop(frappeColors.subtext1('Done'));

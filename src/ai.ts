@@ -1,14 +1,14 @@
 import { Effect } from 'effect';
 
-import { COMMIT_TYPES } from './commit-types.js';
+import { COMMIT_TYPES } from './commit-types';
+import type { ApiResponseError as ApiResponseErrorClass } from './errors/index';
 import {
-  ApiResponseError as ApiResponseErrorClass,
   ClaudeCliError as ClaudeCliErrorClass,
   OpenAiApiError as OpenAiApiErrorClass,
 } from './errors/index.js';
-import { buildPrompt } from './prompt.js';
-import type { Preset } from './secrets.js';
-import { validateMessage } from './validation.js';
+import { buildPrompt } from './prompt';
+import type { Preset } from './secrets';
+import { validateMessage } from './validation';
 
 // Default AI configuration
 const DEFAULT_TIMEOUT = 30_000;
@@ -27,7 +27,10 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
     });
     const exitCode = yield* Effect.tryPromise({
       catch: (error) =>
-        new ClaudeCliErrorClass({ exitCode: -1, message: `Failed to get exit code: ${error instanceof Error ? error.message : JSON.stringify(error)}` }),
+        new ClaudeCliErrorClass({
+          exitCode: -1,
+          message: `Failed to get exit code: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+        }),
       try: () => proc.exited,
     });
     if (exitCode !== 0) {
@@ -39,7 +42,10 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
     }
     const text = yield* Effect.tryPromise({
       catch: (error) =>
-        new ClaudeCliErrorClass({ exitCode, message: `Failed to read stdout: ${error instanceof Error ? error.message : JSON.stringify(error)}` }),
+        new ClaudeCliErrorClass({
+          exitCode,
+          message: `Failed to read stdout: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+        }),
       try: () => new Response(proc.stdout).text(),
     });
     const trimmed = text.trim();
@@ -96,6 +102,35 @@ const fetchApiResponse = (request: {
       }),
   });
 
+const validateOpenAiResponse = (json: unknown): { choices: { message: { content: string } }[] } => {
+  if (
+    typeof json !== 'object' ||
+    json === null ||
+    !('choices' in json) ||
+    !Array.isArray(json.choices) ||
+    json.choices.length === 0
+  ) {
+    throw new Error('Invalid API response structure');
+  }
+
+  const { choices } = json as { choices: Record<string, unknown>[] };
+  const [firstChoice] = choices;
+  if (
+    typeof firstChoice !== 'object' ||
+    firstChoice === null ||
+    !('message' in firstChoice) ||
+    typeof firstChoice['message'] !== 'object' ||
+    firstChoice['message'] === null ||
+    !('content' in firstChoice['message']) ||
+    typeof firstChoice['message']['content'] !== 'string'
+  ) {
+    throw new Error('Invalid API response structure');
+  }
+
+  const { message } = firstChoice as { message: { content: string } };
+  return { choices: [{ message }] };
+};
+
 const parseApiResponse = (
   response: Response,
 ): Effect.Effect<{ content: string }, OpenAiApiErrorClass | ApiResponseErrorClass> =>
@@ -117,17 +152,12 @@ const parseApiResponse = (
           statusCode: response.status,
         }),
       try: async () => {
-        const json = await response.json();
-        return json as { choices: { message: { content: string } }[] };
+        const json: unknown = await response.json();
+        return validateOpenAiResponse(json);
       },
     });
 
-    const content = data.choices[0]?.message?.content;
-
-    if (content === undefined || content === '') {
-      yield* Effect.logError('No content in API response');
-      return yield* new ApiResponseErrorClass({ message: 'No content in API response' });
-    }
+    const { content } = data.choices[0].message;
 
     return { content: content.trim() };
   });

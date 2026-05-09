@@ -3,9 +3,15 @@ import * as p from '@clack/prompts';
 import { Effect } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
-import { listPresets, loadDefaultPreset, saveDefaultPreset, savePreset, type Preset } from './secrets.js';
-import { showBanner } from './ui/banner.js';
-import { frappeColors, theme } from './ui/theme.js';
+import {
+  listPresets,
+  loadDefaultPreset,
+  saveDefaultPreset,
+  savePreset,
+  type Preset,
+} from './secrets';
+import { showBanner } from './ui/banner';
+import { frappeColors, theme } from './ui/theme';
 
 export const setupCommand = Command.make('setup', {}, () =>
   Effect.gen(function* setupCommandGen() {
@@ -21,7 +27,8 @@ export const setupCommand = Command.make('setup', {}, () =>
 
     // Ask what action to take
     const action = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Setup cancelled: ${error}`),
+      catch: (error) =>
+        new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
       try: () =>
         p.select({
           message: 'What would you like to do?',
@@ -35,7 +42,7 @@ export const setupCommand = Command.make('setup', {}, () =>
                 ]
               : []),
           ],
-        }) as Promise<string>,
+        }),
     });
 
     if (action === 'list') {
@@ -57,16 +64,22 @@ export const setupCommand = Command.make('setup', {}, () =>
         return;
       }
       const selected = yield* Effect.tryPromise({
-        catch: (error) => new Error(`Setup cancelled: ${error}`),
-        try: () =>
-          p.select({
+        catch: (error) =>
+          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+        try: async () => {
+          const result = await p.select({
             message: 'Select default preset:',
             options: existingPresets.map((name) => ({
               hint: name === currentDefault ? '(current default)' : undefined,
               label: name,
               value: name,
             })),
-          }) as Promise<string>,
+          });
+          if (typeof result === 'symbol') {
+            throw new TypeError('Cancelled');
+          }
+          return result;
+        },
       });
       yield* Effect.tryPromise(() => saveDefaultPreset(selected));
       p.outro(theme.success(`Default preset set to "${selected}"`));
@@ -79,31 +92,46 @@ export const setupCommand = Command.make('setup', {}, () =>
         return;
       }
       const selected = yield* Effect.tryPromise({
-        catch: (error) => new Error(`Setup cancelled: ${error}`),
-        try: () =>
-          p.select({
+        catch: (error) =>
+          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+        try: async () => {
+          const result = await p.select({
             message: 'Select preset to delete:',
             options: existingPresets.map((name) => ({
               hint: name === currentDefault ? '(current default)' : undefined,
               label: name,
               value: name,
             })),
-          }) as Promise<string>,
+          });
+          if (typeof result === 'symbol') {
+            throw new TypeError('Cancelled');
+          }
+          return result;
+        },
       });
       const confirm = yield* Effect.tryPromise({
-        catch: (error) => new Error(`Setup cancelled: ${error}`),
-        try: () =>
-          p.confirm({
+        catch: (error) =>
+          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+        try: async () => {
+          const result = await p.confirm({
             initialValue: false,
             message: `Delete preset "${selected}"?`,
-          }) as Promise<boolean>,
+          });
+          if (typeof result === 'symbol') {
+            throw new TypeError('Cancelled');
+          }
+          return result;
+        },
       });
       if (!confirm) {
         p.outro(frappeColors.subtext1('Cancelled'));
         return;
       }
       yield* Effect.tryPromise({
-        catch: (error) => new Error(`Failed to delete preset: ${error}`),
+        catch: (error) =>
+          new Error(
+            `Failed to delete preset: ${error instanceof Error ? error.message : String(error)}`,
+          ),
         try: () => import('./secrets.js').then((m) => m.deletePreset(selected)),
       });
       p.outro(theme.success(`Preset "${selected}" deleted`));
@@ -112,74 +140,114 @@ export const setupCommand = Command.make('setup', {}, () =>
 
     // Add new preset
     const presetName = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Setup cancelled: ${error}`),
-      try: () =>
-        p.text({
+      catch: (error) =>
+        new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+      try: async () => {
+        const result = await p.text({
           message: 'Preset name (e.g., openrouter, local, openai):',
           validate: (v) => {
-            if (!v?.trim()) {
+            if (v === undefined || v.trim() === '') {
               return 'Preset name is required';
             }
             if (existingPresets.includes(v.trim())) {
               return 'Preset name already exists';
             }
+            return undefined;
           },
-        }) as Promise<string>,
+        });
+        if (typeof result === 'symbol') {
+          throw new TypeError('Cancelled');
+        }
+        return result;
+      },
     });
 
     const baseUrl = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Setup cancelled: ${error}`),
-      try: () =>
-        p.text({
+      catch: (error) =>
+        new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+      try: async () => {
+        const result = await p.text({
           message: 'Base URL (e.g., https://openrouter.ai/api/v1, http://localhost:1234/v1):',
           validate: (v) => {
-            if (!v?.trim()) {
+            if (v === undefined || v.trim() === '') {
               return 'Base URL is required';
             }
             if (!v.includes('://')) {
               return 'Invalid URL (must include http:// or https://)';
             }
+            return undefined;
           },
-        }) as Promise<string>,
+        });
+        if (typeof result === 'symbol') {
+          throw new TypeError('Cancelled');
+        }
+        return result;
+      },
     });
 
     const hasApiKey = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Setup cancelled: ${error}`),
-      try: () =>
-        p.confirm({
+      catch: (error) =>
+        new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+      try: async () => {
+        const result = await p.confirm({
           initialValue: false,
           message: 'Does this endpoint require an API key?',
-        }) as Promise<boolean>,
+        });
+        if (typeof result === 'symbol') {
+          throw new TypeError('Cancelled');
+        }
+        return result;
+      },
     });
 
-    let apiKey;
+    let apiKey: string | undefined;
     if (hasApiKey) {
       apiKey = yield* Effect.tryPromise({
-        catch: (error) => new Error(`Setup cancelled: ${error}`),
-        try: () =>
-          p.password({
+        catch: (error) =>
+          new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+        try: async () => {
+          const result = await p.password({
             message: 'API Key:',
-            validate: (v) => (v?.trim() ? undefined : 'API Key is required'),
-          }) as Promise<string>,
+            validate: (v) =>
+              v === undefined || v.trim() === '' ? 'API Key is required' : undefined,
+          });
+          if (typeof result === 'symbol') {
+            throw new TypeError('Cancelled');
+          }
+          return result;
+        },
       });
     }
 
     const model = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Setup cancelled: ${error}`),
-      try: () =>
-        p.text({
+      catch: (error) =>
+        new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+      try: async () => {
+        const result = await p.text({
           message: 'Model name (e.g., anthropic/claude-3.5-sonnet, gpt-4o-mini):',
-          validate: (v) => (v?.trim() ? undefined : 'Model name is required'),
-        }) as Promise<string>,
+          validate: (v) =>
+            v === undefined || v.trim() === '' ? 'Model name is required' : undefined,
+        });
+        if (typeof result === 'symbol') {
+          throw new TypeError('Cancelled');
+        }
+        return result;
+      },
     });
 
     const contextWindow = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Setup cancelled: ${error}`),
-      try: () =>
-        p.text({
+      catch: (error) =>
+        new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+      try: async () => {
+        const result = await p.text({
           defaultValue: '256',
           message: 'Context window / max tokens (optional, default 256):',
-        }) as Promise<string>,
+        });
+        if (typeof result === 'symbol') {
+          throw new TypeError('Cancelled');
+        }
+        return result;
+      },
     });
 
     const preset: Preset = {
@@ -199,12 +267,18 @@ export const setupCommand = Command.make('setup', {}, () =>
       // Ask if this should be the default
       if (existingPresets.length === 0 || currentDefault === '') {
         const setAsDefault = yield* Effect.tryPromise({
-          catch: (error) => new Error(`Setup cancelled: ${error}`),
-          try: () =>
-            p.confirm({
+          catch: (error) =>
+            new Error(`Setup cancelled: ${error instanceof Error ? error.message : String(error)}`),
+          try: async () => {
+            const result = await p.confirm({
               initialValue: true,
               message: 'Set as default preset?',
-            }) as Promise<boolean>,
+            });
+            if (typeof result === 'symbol') {
+              throw new TypeError('Cancelled');
+            }
+            return result;
+          },
         });
         if (setAsDefault) {
           yield* Effect.tryPromise(() => saveDefaultPreset(presetName.trim()));

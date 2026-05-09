@@ -2,9 +2,9 @@
 import * as p from '@clack/prompts';
 import { Effect } from 'effect';
 
-import { commit, push } from './git.js';
-import { displayCommitMessage } from './ui/context-panel.js';
-import { frappeColors, theme } from './ui/theme.js';
+import { commit, push } from './git';
+import { displayCommitMessage } from './ui/context-panel';
+import { frappeColors, theme } from './ui/theme';
 
 export const handleEditAction = (finalMessage: string): Effect.Effect<string> =>
   Effect.gen(function* handleEditActionGen() {
@@ -36,7 +36,9 @@ export const handleCommitAction = (
   Effect.gen(function* handleCommitActionGen() {
     yield* Effect.tryPromise({
       catch: (error) => {
-        p.log.error(`Commit failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+        p.log.error(
+          `Commit failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+        );
         p.outro(theme.error('Aborted'));
         process.exit(1);
         throw new Error('Aborted');
@@ -66,7 +68,9 @@ export const handleCommitAction = (
 
     yield* Effect.tryPromise({
       catch: (error) => {
-        p.log.error(`Push failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`);
+        p.log.error(
+          `Push failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+        );
         p.outro(theme.warning('Committed locally, but push failed'));
         process.exit(1);
         throw new Error('Push failed');
@@ -92,14 +96,15 @@ export const handleCopyAction = (finalMessage: string): Effect.Effect<void> =>
     process.exit(0);
   });
 
-export const showActionMenu = (
-  hasStaged: boolean,
-): ((finalMessage: string, generateMessage: Effect.Effect<string>) => Effect.Effect<never>) =>
+export const showActionMenu =
+  (
+    hasStaged: boolean,
+  ): ((finalMessage: string, generateMessage: Effect.Effect<string>) => Effect.Effect<never>) =>
   (initialFinalMessage: string, generateMessage: Effect.Effect<string>) =>
     Effect.gen(function* showActionMenuGen() {
       let finalMessage = initialFinalMessage;
 
-      while (true) {
+      for (;;) {
         const action = yield* Effect.tryPromise({
           catch: (_error) => {
             p.outro(frappeColors.subtext1('Cancelled'));
@@ -120,7 +125,7 @@ export const showActionMenu = (
             if (typeof result === 'symbol') {
               throw new TypeError('Cancelled');
             }
-            return result as string;
+            return result;
           },
         });
 

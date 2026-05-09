@@ -1,4 +1,4 @@
-import type { ClassifiedFiles, FileDiff, ParsedDiff } from './types.js';
+import type { ClassifiedFiles, FileDiff, ParsedDiff } from './types';
 
 // Patterns for files to exclude from diff analysis
 const EXCLUDED_PATTERNS = [
@@ -159,7 +159,7 @@ const compressDiffs = (files: FileDiff[]): string => {
         const truncated = truncateDiff(file.diff, fileBudget);
         totalLines += truncated.split('\n').length;
 
-        const header = file.oldPath ? `${file.oldPath} -> ${file.path}` : file.path;
+        const header = file.oldPath === undefined ? file.path : `${file.oldPath} -> ${file.path}`;
         diffs.push(`--- ${header}\n${truncated}`);
       }
     }

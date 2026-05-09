@@ -1,4 +1,4 @@
-import { COMMIT_TYPES } from './commit-types.js';
+import { COMMIT_TYPES } from './commit-types';
 
 interface Semantics {
   readonly functions: readonly string[];
@@ -75,7 +75,7 @@ const addRecentCommitsSection = (sections: string[], recentCommits?: readonly st
 };
 
 const addUserNoteSection = (sections: string[], userInput?: string): void => {
-  if (userInput !== undefined && userInput !== null && userInput.trim() !== '') {
+  if (userInput !== undefined && userInput.trim() !== '') {
     sections.push(`## User Note\n${userInput.trim()}`);
   }
 };

@@ -2,8 +2,8 @@
 import * as p from '@clack/prompts';
 import { Effect } from 'effect';
 
-import { stageFiles, getStatus, parseStatusOutput } from './git.js';
-import { frappeColors, theme } from './ui/theme.js';
+import { stageFiles, getStatus, parseStatusOutput } from './git';
+import { frappeColors, theme } from './ui/theme';
 
 const MAX_FILE_SELECTION_COUNT = 15;
 
@@ -47,7 +47,9 @@ export const selectFilesToStage = Effect.gen(function* selectFilesToStageGen() {
       yield* Effect.tryPromise(() => stageFiles(filesToStage));
       return true;
     } catch (error) {
-      p.log.error(`Failed to stage files: ${error instanceof Error ? error.message : error}`);
+      p.log.error(
+        `Failed to stage files: ${error instanceof Error ? error.message : String(error)}`,
+      );
       p.outro(theme.error('Aborted'));
       process.exit(1);
     }

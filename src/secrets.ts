@@ -1,4 +1,4 @@
-import { KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE } from './constants.js';
+import { KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE } from './constants';
 
 interface Preset {
   readonly baseUrl: string;
@@ -22,14 +22,22 @@ const isPreset = (value: unknown): value is Preset =>
   (!('apiKey' in value) || typeof Reflect.get(value, 'apiKey') === 'string') &&
   (!('contextWindow' in value) || typeof Reflect.get(value, 'contextWindow') === 'number');
 
-const isSecretBlob = (value: unknown): value is SecretBlob =>
-  typeof value === 'object' &&
-  value !== null &&
-  'presets' in value &&
-  typeof Reflect.get(value, 'presets') === 'object' &&
-  Reflect.get(value, 'presets') !== null &&
-  (!('defaultPreset' in value) || typeof Reflect.get(value, 'defaultPreset') === 'string') &&
-  Object.values(Reflect.get(value, 'presets')).every((preset) => isPreset(preset));
+const isSecretBlob = (value: unknown): value is SecretBlob => {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  if (!('presets' in value)) {
+    return false;
+  }
+  const presets = Reflect.get(value, 'presets');
+  if (typeof presets !== 'object' || presets === null) {
+    return false;
+  }
+  if ('defaultPreset' in value && typeof Reflect.get(value, 'defaultPreset') !== 'string') {
+    return false;
+  }
+  return Object.values(presets).every((preset) => isPreset(preset));
+};
 
 const readKeychainBlob = async (): Promise<SecretBlob> => {
   const raw = await Bun.secrets.get({ name: KEYCHAIN_ACCOUNT, service: KEYCHAIN_SERVICE });
@@ -61,11 +69,10 @@ const savePreset = async (name: string, preset: Preset): Promise<string> => {
 
 const loadPreset = async (name: string): Promise<Preset> => {
   const keychain = await readKeychainBlob();
-  const preset = keychain.presets[name];
-  if (preset === undefined) {
+  if (!(name in keychain.presets)) {
     throw new Error(`Preset "${name}" not found. Run: aic setup`);
   }
-  return preset;
+  return keychain.presets[name];
 };
 
 const deletePreset = async (name: string): Promise<void> => {
@@ -92,10 +99,7 @@ const saveDefaultPreset = async (name: string): Promise<string> => {
   if (!(name in blob.presets)) {
     throw new Error(`Preset "${name}" does not exist`);
   }
-  const newBlob: SecretBlob = {
-    defaultPreset: name,
-    presets: blob.presets,
-  };
+  const newBlob: SecretBlob = { defaultPreset: name, presets: blob.presets };
   await Bun.secrets.set({
     name: KEYCHAIN_ACCOUNT,
     service: KEYCHAIN_SERVICE,

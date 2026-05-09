@@ -2,9 +2,9 @@ import { intro, outro, select, spinner, log } from '@clack/prompts';
 import { Effect } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
-import { deletePreset, deleteSecretBlob, listPresets, loadDefaultPreset } from './secrets.js';
-import { showBanner } from './ui/banner.js';
-import { frappeColors, theme } from './ui/theme.js';
+import { deletePreset, deleteSecretBlob, listPresets, loadDefaultPreset } from './secrets';
+import { showBanner } from './ui/banner';
+import { frappeColors, theme } from './ui/theme';
 
 export const teardownCommand = Command.make('teardown', {}, () =>
   Effect.gen(function* teardownCommandImpl() {
@@ -29,12 +29,18 @@ export const teardownCommand = Command.make('teardown', {}, () =>
     ];
 
     const selected = yield* Effect.tryPromise({
-      catch: (error) => new Error(`Teardown cancelled: ${error}`),
-      try: () =>
-        select({
+      catch: (error) =>
+        new Error(`Teardown cancelled: ${error instanceof Error ? error.message : String(error)}`),
+      try: async () => {
+        const result = await select({
           message: 'What would you like to remove?',
           options: removeOptions,
-        }) as Promise<string>,
+        });
+        if (typeof result === 'symbol') {
+          throw new TypeError('Cancelled');
+        }
+        return result;
+      },
     });
 
     const s = spinner();
@@ -46,7 +52,10 @@ export const teardownCommand = Command.make('teardown', {}, () =>
         s.stop(theme.success('All presets removed'));
       } else {
         yield* Effect.tryPromise({
-          catch: (error) => new Error(`Failed to remove preset: ${error}`),
+          catch: (error) =>
+            new Error(
+              `Failed to remove preset: ${error instanceof Error ? error.message : String(error)}`,
+            ),
           try: () => deletePreset(selected),
         });
         s.stop(theme.success(`Preset "${selected}" removed`));

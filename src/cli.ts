@@ -4,10 +4,10 @@ import { Effect, Layer, Logger } from 'effect';
 import { Command } from 'effect/unstable/cli';
 
 import pkg from '../package.json' with { type: 'json' };
-import { commitCommand } from './cli-commit.js';
-import { presetFlag, skillFlag } from './cli-flags.js';
-import { setupCommand } from './cli-setup.js';
-import { teardownCommand } from './cli-teardown.js';
+import { commitCommand } from './cli-commit';
+import { presetFlag, skillFlag } from './cli-flags';
+import { setupCommand } from './cli-setup';
+import { teardownCommand } from './cli-teardown';
 
 const app = Command.make('aic', { preset: presetFlag, skill: skillFlag }, ({ skill }) =>
   Effect.sync(() => {
@@ -49,7 +49,7 @@ const writeBoundaryError = (error: unknown): void => {
 };
 
 try {
-  await Effect.runPromise(program.pipe(Effect.provide(runtimeLayer)) as Effect.Effect<void, never, never>);
+  await Effect.runPromise(program.pipe(Effect.provide(runtimeLayer)));
 } catch (error) {
   writeBoundaryError(error);
 }

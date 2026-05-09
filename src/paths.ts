@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 
-import { CONFIG_DIR_NAME } from './constants.js';
+import { CONFIG_DIR_NAME } from './constants';
 
 export const expandHome = (pathStr: string): string =>
   pathStr === '~' || pathStr.startsWith('~/')

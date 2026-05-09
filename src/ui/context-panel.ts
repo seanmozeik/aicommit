@@ -2,9 +2,9 @@
 import boxen from 'boxen';
 import gradient from 'gradient-string';
 
-import { getRecentCommits, getSubmodulePaths } from '../git.js';
-import type { ClassifiedFiles, FileDiff } from '../types.js';
-import { boxColors, frappeColors, gradientColors, theme } from './theme.js';
+import { getRecentCommits, getSubmodulePaths } from '../git';
+import type { ClassifiedFiles, FileDiff } from '../types';
+import { boxColors, frappeColors, gradientColors, theme } from './theme';
 
 // Visual bar settings
 const BAR_WIDTH = 12;
@@ -77,7 +77,7 @@ const formatFileWithBar = (
   const bar = generateBar(file.additions, file.deletions, maxChanges);
 
   // Truncate long paths
-  let path = file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+  let path = file.oldPath === undefined ? file.path : `${file.oldPath} → ${file.path}`;
   if (path.length > MAX_PATH_LENGTH) {
     path = `...${path.slice(-PATH_TRUNCATE_LENGTH)}`;
   }
@@ -147,9 +147,15 @@ const displayFilesSection = (
   const filesBadges = formatFileBadges({ ...files, included: filteredIncluded });
   const lineStats = formatLineStats(totalAdditions, totalDeletions);
 
-  const fileLines = filteredIncluded.map((f) => formatFileWithBar(f, maxChanges, maxAddWidth, maxDelWidth));
+  const fileLines = filteredIncluded.map((f) =>
+    formatFileWithBar(f, maxChanges, maxAddWidth, maxDelWidth),
+  );
 
-  const filesContent = [filesBadges, frappeColors.surface2('─'.repeat(SEPARATOR_LENGTH)), ...fileLines].join('\n');
+  const filesContent = [
+    filesBadges,
+    frappeColors.surface2('─'.repeat(SEPARATOR_LENGTH)),
+    ...fileLines,
+  ].join('\n');
 
   const filesBox = boxen(filesContent, {
     borderColor: boxColors.default,

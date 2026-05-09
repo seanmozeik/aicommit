@@ -18,8 +18,5 @@ export const validateMessage = (msg: string): string => {
 
   const validLines = lines.filter((line) => line.length > 0);
   const commitLine = validLines.find((line) => conventionalPattern.test(line)) ?? validLines[0];
-  if (commitLine === undefined) {
-    return '';
-  }
   return commitLine.trim();
 };

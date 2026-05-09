@@ -1,4 +1,4 @@
-import { configJsonPath, configTomlPath } from './paths.js';
+import { configJsonPath, configTomlPath } from './paths';
 
 interface AicUserConfig {
   /** Default preset name (optional, falls back to keychain default) */

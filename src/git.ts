@@ -23,7 +23,7 @@ export const getGitRoot = async (): Promise<string | null> => {
  */
 export const cdToGitRoot = async (): Promise<boolean> => {
   const root = await getGitRoot();
-  if (root) {
+  if (root !== null) {
     process.chdir(root);
     return true;
   }
@@ -141,7 +141,9 @@ export const getRecentCommits = async (count: number = DEFAULT_COMMIT_COUNT): Pr
 /**
  * Get recent commit messages (subject only, no hash)
  */
-export const getRecentCommitMessages = async (count: number = DEFAULT_MESSAGE_COUNT): Promise<string[]> => {
+export const getRecentCommitMessages = async (
+  count: number = DEFAULT_MESSAGE_COUNT,
+): Promise<string[]> => {
   try {
     const output = await $`git log --format=%s -${count}`.text();
     return output.trim().split('\n').filter(Boolean);
@@ -187,10 +189,10 @@ export const parseStatusOutput = (
  */
 /* oxlint-disable unicorn/prefer-ternary */
 export const createTag = async (tag: string, message?: string): Promise<void> => {
-  if (message) {
-    await $`git tag -a ${tag} -m ${message}`.quiet();
-  } else {
+  if (message === undefined) {
     await $`git tag ${tag}`.quiet();
+  } else {
+    await $`git tag -a ${tag} -m ${message}`.quiet();
   }
 };
 

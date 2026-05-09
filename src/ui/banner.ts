@@ -1,7 +1,7 @@
 /* oxlint-disable no-console */
 import gradient from 'gradient-string';
 
-import { gradientColors } from './theme.js';
+import { gradientColors } from './theme';
 
 // Create custom gradient using Catppuccin Frappe colors
 const bannerGradient = gradient([...gradientColors.banner]);
