@@ -93,6 +93,20 @@ const generateCommitMessage = (input: GenerationInput): Effect.Effect<string> =>
         log.error(`API error (${error.statusCode}): ${error.message}`);
         return Effect.die(error);
       },
+      TimeoutError: (error) => {
+        spinner().stop(theme.error('Timed out'));
+        log.error(
+          `Generation timed out after ${error.timeoutMs}ms. Try increasing the timeout or using a faster model.`,
+        );
+        return Effect.die(error);
+      },
+      ToolCallError: (error) => {
+        spinner().stop(theme.error('Failed'));
+        log.error(
+          `Model did not call the expected tool (finish_reason: ${error.finishReason}). Try a model with better tool-call support.`,
+        );
+        return Effect.die(error);
+      },
     }),
   );
 

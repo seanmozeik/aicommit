@@ -5,7 +5,11 @@ import { Effect, type Layer, Schema } from 'effect';
 import { Tool, Toolkit } from 'effect/unstable/ai';
 
 import { generateWithToolkit } from './ai-toolkit';
-import type { OpenAiApiError as OpenAiApiErrorClass } from './errors/index';
+import type {
+  OpenAiApiError as OpenAiApiErrorClass,
+  TimeoutError,
+  ToolCallError,
+} from './errors/index';
 import type { Preset } from './secrets';
 
 const DEFAULT_CONTEXT_WINDOW = 32_000;
@@ -44,28 +48,31 @@ const maxOutputTokens = (preset: Preset): number =>
 export const generateChangelogWithOpenAICompatible = (
   prompt: string,
   preset: Preset,
-): Effect.Effect<string, OpenAiApiErrorClass> =>
-  generateWithToolkit({
-    extractFromCalls: (calls) => {
-      const call = calls.find((c) => c.name === 'SubmitChangelog');
-      if (call === undefined) {
-        return null;
-      }
-      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- params shape is enforced by the SubmitChangelog tool schema
-      const params = call.params as { markdown?: unknown };
-      const md = typeof params.markdown === 'string' ? params.markdown.trim() : '';
-      return md.length > 0 ? md : null;
-    },
-    fallbackFromText: (text) => {
-      const trimmed = text.trim();
-      return trimmed.length > 0 ? trimmed : null;
-    },
-    maxOutputTokens: maxOutputTokens(preset),
-    preset,
-    systemPrompt: CHANGELOG_SYSTEM_PROMPT,
-    // eslint-disable-next-line typescript/no-unsafe-type-assertion, typescript/no-explicit-any -- generic erasure for the helper signature; TInput is reconstructed at extractFromCalls
-    toolkit: ChangelogToolkit as unknown as Toolkit.Toolkit<Record<string, any>>,
-    // eslint-disable-next-line typescript/no-unsafe-type-assertion -- generic erasure on the matching layer
-    toolkitLayer: ChangelogToolkitLayer as Layer.Layer<unknown>,
-    userPrompt: prompt,
-  });
+): Effect.Effect<string, ToolCallError | TimeoutError | OpenAiApiErrorClass> =>
+  Effect.gen(function* generateChangelogWithOpenAICompatibleImpl() {
+    yield* Effect.annotateCurrentSpan({ 'ai.model': preset.model, 'ai.provider': preset.baseUrl });
+    return yield* generateWithToolkit({
+      extractFromCalls: (calls) => {
+        const call = calls.find((c) => c.name === 'SubmitChangelog');
+        if (call === undefined) {
+          return null;
+        }
+        // eslint-disable-next-line typescript/no-unsafe-type-assertion -- params shape is enforced by the SubmitChangelog tool schema
+        const params = call.params as { markdown?: unknown };
+        const md = typeof params.markdown === 'string' ? params.markdown.trim() : '';
+        return md.length > 0 ? md : null;
+      },
+      fallbackFromText: (text) => {
+        const trimmed = text.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      },
+      maxOutputTokens: maxOutputTokens(preset),
+      preset,
+      systemPrompt: CHANGELOG_SYSTEM_PROMPT,
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion, typescript/no-explicit-any -- generic erasure for the helper signature; TInput is reconstructed at extractFromCalls
+      toolkit: ChangelogToolkit as unknown as Toolkit.Toolkit<Record<string, any>>,
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- generic erasure on the matching layer
+      toolkitLayer: ChangelogToolkitLayer as Layer.Layer<unknown>,
+      userPrompt: prompt,
+    });
+  }).pipe(Effect.withSpan('ai.changelog.generate'));

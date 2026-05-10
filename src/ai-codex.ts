@@ -100,7 +100,8 @@ const writeCodexPrompt = (
   });
 
 const generateWithCodex = (prompt: string): Effect.Effect<string, CodexCliErrorClass> =>
-  Effect.gen(function* generateWithCodexGen() {
+  Effect.gen(function* generateWithCodexImpl() {
+    yield* Effect.logInfo('Generating with Codex CLI');
     const { outputPath, schemaPath } = codexPaths();
     yield* writeCodexSchema(schemaPath);
     const proc = Bun.spawn(['codex', ...codexArgs(schemaPath, outputPath)], {
@@ -119,6 +120,7 @@ const generateWithCodex = (prompt: string): Effect.Effect<string, CodexCliErrorC
     });
     if (exitCode !== 0) {
       const stderr = yield* readStreamText(proc.stderr);
+      yield* Effect.logError(`Codex CLI failed: ${stderr.trim() || `exit code ${exitCode}`}`);
       return yield* new CodexCliErrorClass({
         exitCode,
         message: stderr.trim() || `Codex CLI exited with code ${exitCode}`,
@@ -132,7 +134,9 @@ const generateWithCodex = (prompt: string): Effect.Effect<string, CodexCliErrorC
         }),
       try: () => Bun.file(outputPath).text(),
     });
-    return parseCodexOutput(output);
-  });
+    const result = parseCodexOutput(output);
+    yield* Effect.logInfo('Codex CLI generation succeeded');
+    return result;
+  }).pipe(Effect.withSpan('ai.codex.generate'));
 
 export { generateWithCodex };

@@ -8,16 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-05-09
 
 ### Added
+
 - Codex CLI integration for AI interactions.
 - `--release-type` argument to specify release types during version bumping.
 - Spinner indicator during changelog generation for improved feedback.
 
 ### Changed
+
 - Migrated project detection and release flow to use Effect v4.
 - Refactored AI integration to follow the Effect AI Toolkit pattern.
 - Updated local model support to use OpenAI-compatible chat completions endpoints.
 
 ### Fixed
+
 - Improved changelog error handling and normalized git tag processing for more reliable releases.
 
 ## [0.3.10] - 2026-05-01

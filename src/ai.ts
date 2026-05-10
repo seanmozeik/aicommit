@@ -23,6 +23,8 @@ import { COMMIT_TYPES } from './commit-types';
 import {
   ClaudeCliError as ClaudeCliErrorClass,
   type OpenAiApiError as OpenAiApiErrorClass,
+  type TimeoutError,
+  type ToolCallError,
 } from './errors/index.js';
 import { buildPrompt, buildSystemPrompt } from './prompt';
 import type { Preset } from './secrets';
@@ -59,7 +61,8 @@ const getModelBudgets = (
 // --- Claude CLI subprocess (unchanged) ----------------------------------
 
 const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErrorClass> =>
-  Effect.gen(function* generateWithClaudeGen() {
+  Effect.gen(function* generateWithClaudeImpl() {
+    yield* Effect.logInfo('Generating with Claude CLI');
     const proc = Bun.spawn(['claude', '--model', 'haiku', '-p', prompt], {
       stderr: 'pipe',
       stdout: 'pipe',
@@ -80,6 +83,7 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
           return '';
         }
       });
+      yield* Effect.logError(`Claude CLI failed: ${stderr.trim() || `exit code ${exitCode}`}`);
       return yield* new ClaudeCliErrorClass({
         exitCode,
         message: stderr.trim() || `Claude CLI exited with code ${exitCode}`,
@@ -93,8 +97,9 @@ const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErro
         }),
       try: () => new Response(proc.stdout).text(),
     });
+    yield* Effect.logInfo('Claude CLI generation succeeded');
     return text.trim();
-  });
+  }).pipe(Effect.withSpan('ai.claude.generate'));
 
 // --- OpenAI-compatible (Effect AI Toolkit) ------------------------------
 
@@ -120,36 +125,38 @@ const CommitToolkitLayer = CommitToolkit.toLayer(
 const generateWithOpenAICompatible = (
   prompt: string,
   preset: Preset,
-): Effect.Effect<string, OpenAiApiErrorClass> => {
-  const budgets = getModelBudgets(preset);
-  return generateWithToolkit({
-    extractFromCalls: (calls) => {
-      const call = calls.find((c) => c.name === 'SubmitCommitMessage');
-      if (call === undefined) {
-        return null;
-      }
-      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- params shape is enforced by the SubmitCommitMessage tool schema
-      const params = call.params as { message?: unknown };
-      const message = typeof params.message === 'string' ? params.message.trim() : '';
-      return message.length > 0 ? message : null;
-    },
-    // Some local backends still occasionally return prose. Accept it as a
-    // Last-resort fallback rather than crashing — the validateMessage call
-    // Downstream will reject obvious junk anyway.
-    fallbackFromText: (text) => {
-      const trimmed = text.trim();
-      return trimmed.length > 0 ? trimmed : null;
-    },
-    maxOutputTokens: budgets.maxOutputTokens,
-    preset,
-    systemPrompt: buildSystemPrompt(),
-    // eslint-disable-next-line typescript/no-unsafe-type-assertion, typescript/no-explicit-any -- generic erasure: Toolkit.Toolkit<{...}> → Toolkit<Record<string,any>> for the helper signature; TInput is reconstructed at extractFromCalls
-    toolkit: CommitToolkit as unknown as Toolkit.Toolkit<Record<string, any>>,
-    // eslint-disable-next-line typescript/no-unsafe-type-assertion -- generic erasure on the matching layer
-    toolkitLayer: CommitToolkitLayer as Layer.Layer<unknown>,
-    userPrompt: prompt,
-  });
-};
+): Effect.Effect<string, ToolCallError | TimeoutError | OpenAiApiErrorClass> =>
+  Effect.gen(function* generateWithOpenAICompatibleImpl() {
+    yield* Effect.annotateCurrentSpan({ 'ai.model': preset.model, 'ai.provider': preset.baseUrl });
+    const budgets = getModelBudgets(preset);
+    return yield* generateWithToolkit({
+      extractFromCalls: (calls) => {
+        const call = calls.find((c) => c.name === 'SubmitCommitMessage');
+        if (call === undefined) {
+          return null;
+        }
+        // eslint-disable-next-line typescript/no-unsafe-type-assertion -- params shape is enforced by the SubmitCommitMessage tool schema
+        const params = call.params as { message?: unknown };
+        const message = typeof params.message === 'string' ? params.message.trim() : '';
+        return message.length > 0 ? message : null;
+      },
+      // Some local backends still occasionally return prose. Accept it as a
+      // Last-resort fallback rather than crashing — the validateMessage call
+      // Downstream will reject obvious junk anyway.
+      fallbackFromText: (text) => {
+        const trimmed = text.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      },
+      maxOutputTokens: budgets.maxOutputTokens,
+      preset,
+      systemPrompt: buildSystemPrompt(),
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion, typescript/no-explicit-any -- generic erasure: Toolkit.Toolkit<{...}> → Toolkit<Record<string,any>> for the helper signature; TInput is reconstructed at extractFromCalls
+      toolkit: CommitToolkit as unknown as Toolkit.Toolkit<Record<string, any>>,
+      // eslint-disable-next-line typescript/no-unsafe-type-assertion -- generic erasure on the matching layer
+      toolkitLayer: CommitToolkitLayer as Layer.Layer<unknown>,
+      userPrompt: prompt,
+    });
+  }).pipe(Effect.withSpan('ai.openai.generate'));
 
 export { COMMIT_TYPES, buildPrompt, estimateTokens, generateWithClaude, generateWithCodex };
 export { generateWithOpenAICompatible, getModelBudgets, validateMessage };

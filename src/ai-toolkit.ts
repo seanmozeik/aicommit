@@ -22,10 +22,14 @@ import { BunHttpClient } from '@effect/platform-bun';
 import { Duration, Effect, ExecutionPlan, Layer, Redacted } from 'effect';
 import { LanguageModel, type Toolkit } from 'effect/unstable/ai';
 
-import { OpenAiApiError as OpenAiApiErrorClass } from './errors/index';
+import {
+  OpenAiApiError as OpenAiApiErrorClass,
+  TimeoutError as TimeoutErrorClass,
+  ToolCallError as ToolCallErrorClass,
+} from './errors/index';
 import type { Preset } from './secrets';
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_ATTEMPTS = 2;
 const DEFAULT_TEMPERATURE = 0.2;
 
@@ -81,7 +85,7 @@ interface RawResponse {
 const interpret = <TOutput>(
   raw: RawResponse,
   options: ToolCallOptions<TOutput>,
-): TOutput | OpenAiApiErrorClass => {
+): TOutput | ToolCallErrorClass => {
   const fromCalls = options.extractFromCalls(raw.toolCalls);
   if (fromCalls !== null) {
     return fromCalls;
@@ -92,12 +96,41 @@ const interpret = <TOutput>(
       return fromText;
     }
   }
-  return new OpenAiApiErrorClass({
-    error: new Error('model returned no tool call and no usable text'),
+  return new ToolCallErrorClass({
+    finishReason: raw.finishReason,
     message: `model returned no usable output (toolCalls=${raw.toolCalls.length}, finishReason=${raw.finishReason})`,
-    statusCode: 0,
+    toolCallsCount: raw.toolCalls.length,
   });
 };
+
+const mapError = (
+  error: unknown,
+  options: ToolCallOptions<unknown>,
+): OpenAiApiErrorClass | ToolCallErrorClass | TimeoutErrorClass => {
+  if (
+    error instanceof OpenAiApiErrorClass ||
+    error instanceof ToolCallErrorClass ||
+    error instanceof TimeoutErrorClass
+  ) {
+    return error;
+  }
+  // Convert timeout errors to our custom TimeoutError
+  if (error instanceof Error && error.name === 'TimeoutException') {
+    return new TimeoutErrorClass({
+      message: `AI generation timed out after ${options.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms`,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
+  }
+  const detail = error instanceof Error ? error.message : String(error);
+  return new OpenAiApiErrorClass({ error, message: detail, statusCode: 0 });
+};
+
+const mapErrorForOptions =
+  (
+    options: ToolCallOptions<unknown>,
+  ): ((error: unknown) => OpenAiApiErrorClass | ToolCallErrorClass | TimeoutErrorClass) =>
+  (error) =>
+    mapError(error, options);
 
 // Single-shot LLM call with `tool_choice: 'required'` and ExecutionPlan
 // Retries. Returns the typed payload extracted from the model's tool call.
@@ -106,8 +139,16 @@ const interpret = <TOutput>(
 // First attempt and we want to be lenient.
 const generateWithToolkit = <TOutput>(
   options: ToolCallOptions<TOutput>,
-): Effect.Effect<TOutput, OpenAiApiErrorClass> =>
-  Effect.gen(function* runToolkit() {
+): Effect.Effect<TOutput, ToolCallErrorClass | TimeoutErrorClass | OpenAiApiErrorClass> =>
+  Effect.gen(function* generateWithToolkitImpl() {
+    yield* Effect.annotateCurrentSpan({
+      'ai.attempts': options.attempts ?? DEFAULT_ATTEMPTS,
+      'ai.max_output_tokens': options.maxOutputTokens,
+      'ai.model': options.preset.model,
+      'ai.provider': options.preset.baseUrl,
+    });
+    yield* Effect.logInfo(`Generating with model: ${options.preset.model}`);
+
     const retryPlan = ExecutionPlan.make({
       attempts: options.attempts ?? DEFAULT_ATTEMPTS,
       provide: OpenAiLanguageModel.model(options.preset.model, {
@@ -115,6 +156,7 @@ const generateWithToolkit = <TOutput>(
         temperature: options.temperature ?? DEFAULT_TEMPERATURE,
       }),
     });
+    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const response = yield* LanguageModel.generateText({
       prompt: [
         { content: options.systemPrompt, role: 'system' },
@@ -122,31 +164,24 @@ const generateWithToolkit = <TOutput>(
       ],
       toolChoice: 'required',
       toolkit: options.toolkit,
-    }).pipe(
-      Effect.withExecutionPlan(retryPlan),
-      Effect.timeout(Duration.millis(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)),
-    );
+    }).pipe(Effect.withExecutionPlan(retryPlan), Effect.timeout(Duration.millis(timeoutMs)));
     const raw: RawResponse = {
       finishReason: response.finishReason,
       text: response.text,
       toolCalls: response.toolCalls.map((c) => ({ name: c.name, params: c.params })),
     };
     const result = interpret(raw, options);
-    if (result instanceof OpenAiApiErrorClass) {
+    if (result instanceof ToolCallErrorClass) {
+      yield* Effect.logError(`AI tool call failed: ${result.message}`);
       return yield* Effect.fail(result);
     }
+    yield* Effect.logInfo('AI generation succeeded');
     return result;
   }).pipe(
+    Effect.withSpan('ai.toolkit.generate'),
     Effect.provide(options.toolkitLayer),
     Effect.provide(buildOpenAiLayer(options.preset)),
-    // eslint-disable-next-line promise/prefer-await-to-callbacks -- Effect.mapError is a pipe combinator, not a Node-style callback
-    Effect.mapError((error) => {
-      if (error instanceof OpenAiApiErrorClass) {
-        return error;
-      }
-      const detail = error instanceof Error ? error.message : String(error);
-      return new OpenAiApiErrorClass({ error, message: detail, statusCode: 0 });
-    }),
+    Effect.mapError(mapErrorForOptions(options)),
   );
 
 export { generateWithToolkit, normalizeBaseUrl };
