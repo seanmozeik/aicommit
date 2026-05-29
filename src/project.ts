@@ -111,18 +111,31 @@ const METADATA_HANDLERS: Record<ProjectType, MetadataHandler> = {
   },
   rust: {
     detect: (content) => {
-      const nameMatch = /\[package\][\s\S]*?name\s*=\s*["']([^"']+)["']/u.exec(content);
-      const versionMatch = /\[package\][\s\S]*?version\s*=\s*["']([^"']+)["']/u.exec(content);
-      return succeedMetadata(matchProjectMetadata(versionMatch, nameMatch?.[1] ?? 'unknown'));
+      const pkgName = /\[package\][\s\S]*?\bname\s*=\s*["']([^"']+)["']/u.exec(content);
+      const pkgVersion = /\[package\][\s\S]*?\bversion\s*=\s*["']([^"']+)["']/u.exec(content);
+      // Workspaces that inherit the version via [workspace.package] (members set
+      // `version.workspace = true`) have no top-level [package] table.
+      const wsName = /\[workspace\.package\][\s\S]*?\bname\s*=\s*["']([^"']+)["']/u.exec(content);
+      const wsVersion = /\[workspace\.package\][\s\S]*?\bversion\s*=\s*["']([^"']+)["']/u.exec(
+        content,
+      );
+      const versionMatch = pkgVersion ?? wsVersion;
+      const name = pkgName?.[1] ?? wsName?.[1] ?? 'unknown';
+      return succeedMetadata(matchProjectMetadata(versionMatch, name));
     },
     files: ['Cargo.toml'],
-    updateVersion: (content, newVersion) =>
-      Effect.succeed(
+    updateVersion: (content, newVersion) => {
+      const pkgPattern = /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u;
+      if (pkgPattern.test(content)) {
+        return Effect.succeed(content.replace(pkgPattern, `$1$2${newVersion}$4`));
+      }
+      return Effect.succeed(
         content.replace(
-          /(\[package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u,
+          /(\[workspace\.package\][\s\S]*?)(version\s*=\s*["'])([^"']+)(["'])/u,
           `$1$2${newVersion}$4`,
         ),
-      ),
+      );
+    },
   },
   unknown: {
     detect: () => Effect.succeed(null),
