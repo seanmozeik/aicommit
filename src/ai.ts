@@ -63,7 +63,7 @@ const getModelBudgets = (
 const generateWithClaude = (prompt: string): Effect.Effect<string, ClaudeCliErrorClass> =>
   Effect.gen(function* generateWithClaudeImpl() {
     yield* Effect.logInfo('Generating with Claude CLI');
-    const proc = Bun.spawn(['claude', '--model', 'haiku', '-p', prompt], {
+    const proc = Bun.spawn(['clarp', '--model', 'haiku', '-p', prompt], {
       stderr: 'pipe',
       stdout: 'pipe',
     });
