@@ -1,7 +1,8 @@
 import { Schema } from 'effect';
 
-export class OpenAiApiError extends Schema.TaggedErrorClass<OpenAiApiError>()('OpenAiApiError', {
-  error: Schema.Defect,
+export class OpenAiApiError extends Schema.TaggedError<OpenAiApiError>()('OpenAiApiError', {
+  error: Schema.Defect(),
   message: Schema.String,
-  statusCode: Schema.Number,
+  responseBody: Schema.optionalKey(Schema.String),
+  statusCode: Schema.Finite,
 }) {}

@@ -4,27 +4,30 @@
  * 2) Pack `artifacts/aic-{version}.tar.gz` for GitHub/Homebrew (dist/, src/, package.json).
  * 3) SHA256 that tarball and patch `Formula/aic.rb` (`version` + `sha256`).
  *
- * Fast iteration (JS only, no tarball / formula):
+ * Build the distributable archive without rewriting the checked-in formula:
  *   bun run build -- --no-formula
  */
 import { chmodSync, copyFileSync, cpSync, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import pkg from '../package.json' with { type: 'json' };
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const skipTarballAndFormula = process.argv.includes('--no-formula');
+const skipFormulaUpdate = process.argv.includes('--no-formula');
 const { version } = pkg;
 const distPrefix = './dist/';
-const distDir = join(root, 'dist');
+const distDir = path.join(root, 'dist');
 const entry = './src/cli.ts';
 
-const binField = pkg.bin;
+const binField: unknown = pkg.bin;
 if (typeof binField !== 'object' || binField === null || Array.isArray(binField)) {
   throw new TypeError('package.json "bin" must be a map of command names to paths');
 }
-const binPath = binField['aic'];
+if (!('aic' in binField)) {
+  throw new TypeError('package.json must define bin.aic as a string');
+}
+const binPath = binField.aic;
 if (typeof binPath !== 'string') {
   throw new TypeError('package.json must define bin.aic as a string');
 }
@@ -41,33 +44,27 @@ const cli = Bun.spawnSync(
   { cwd: root, stderr: 'inherit', stdout: 'inherit' },
 );
 if (cli.exitCode !== 0) {
-  process.exit(cli.exitCode ?? 1);
+  process.exit(cli.exitCode);
 }
 
-const outPath = join(distDir, CLI_BUNDLE_NAME);
-renameSync(join(distDir, 'cli.js'), outPath);
+const outPath = path.join(distDir, CLI_BUNDLE_NAME);
+renameSync(path.join(distDir, 'cli.js'), outPath);
 chmodSync(outPath, 0o755);
-
-if (skipTarballAndFormula) {
-  process.exit(0);
-}
 
 /** Homebrew expects `libexec/dist/aic.js` → archive has `dist/<bundle>` at root. */
 const archiveInner = `aic-${version}`;
-const stageRoot = join(root, 'artifacts', '.stage');
-const stageInner = join(stageRoot, archiveInner);
+const stageRoot = path.join(root, 'artifacts', '.stage');
+const stageInner = path.join(stageRoot, archiveInner);
 
 rmSync(stageRoot, { force: true, recursive: true });
-mkdirSync(join(stageInner, 'dist'), { recursive: true });
-// Copy the built binary
-copyFileSync(outPath, join(stageInner, 'dist', CLI_BUNDLE_NAME));
-// Copy source for inspection
-cpSync(join(root, 'src'), join(stageInner, 'src'), { recursive: true });
-copyFileSync(join(root, 'package.json'), join(stageInner, 'package.json'));
+mkdirSync(path.join(stageInner, 'dist'), { recursive: true });
+copyFileSync(outPath, path.join(stageInner, 'dist', CLI_BUNDLE_NAME));
+cpSync(path.join(root, 'src'), path.join(stageInner, 'src'), { recursive: true });
+copyFileSync(path.join(root, 'package.json'), path.join(stageInner, 'package.json'));
 
-mkdirSync(join(root, 'artifacts'), { recursive: true });
+mkdirSync(path.join(root, 'artifacts'), { recursive: true });
 const tarName = `aic-${version}.tar.gz`;
-const tarPath = join(root, 'artifacts', tarName);
+const tarPath = path.join(root, 'artifacts', tarName);
 
 const tar = Bun.spawnSync(['tar', '-czf', tarPath, '-C', stageRoot, archiveInner], {
   cwd: root,
@@ -75,7 +72,21 @@ const tar = Bun.spawnSync(['tar', '-czf', tarPath, '-C', stageRoot, archiveInner
   stdout: 'inherit',
 });
 if (tar.exitCode !== 0) {
-  process.exit(tar.exitCode ?? 1);
+  process.exit(tar.exitCode);
+}
+
+const archiveListing = Bun.spawnSync(['tar', '-tzf', tarPath], {
+  cwd: root,
+  stderr: 'inherit',
+  stdout: 'pipe',
+});
+if (archiveListing.exitCode !== 0) {
+  process.exit(archiveListing.exitCode);
+}
+const archiveEntry = `${archiveInner}/dist/${CLI_BUNDLE_NAME}`;
+const archiveFiles = new TextDecoder().decode(archiveListing.stdout).trim().split('\n');
+if (!archiveFiles.includes(archiveEntry)) {
+  throw new TypeError(`Archive is missing the Homebrew executable entry: ${archiveEntry}`);
 }
 
 rmSync(stageRoot, { force: true, recursive: true });
@@ -84,12 +95,25 @@ const sha256 = new Bun.CryptoHasher('sha256')
   .update(await Bun.file(tarPath).arrayBuffer())
   .digest('hex');
 
-const formulaPath = join(root, 'Formula', 'aic.rb');
+const formulaPath = path.join(root, 'Formula', 'aic.rb');
 let rb = await Bun.file(formulaPath).text();
-rb = rb.replace(/^(\s*version\s+")[^"]+(")/mu, `$1${version}$2`);
-rb = rb.replace(/^(\s*sha256\s+")[0-9a-fA-F]+(")/mu, `$1${sha256}$2`);
+const formulaExecutable = `#{libexec}/dist/${CLI_BUNDLE_NAME}`;
+if (!rb.includes(formulaExecutable)) {
+  throw new TypeError(`Formula wrapper must execute ${formulaExecutable}`);
+}
+
+if (skipFormulaUpdate) {
+  process.stdout.write(`Wrote ${tarPath}\nVerified ${archiveEntry}\n`);
+  process.exit(0);
+}
+
+rb = rb.replace(/^(?<prefix>\s*version\s+")[^"]+(?<suffix>")/mu, `$<prefix>${version}$<suffix>`);
+rb = rb.replace(
+  /^(?<prefix>\s*sha256\s+")[0-9a-fA-F]+(?<suffix>")/mu,
+  `$<prefix>${sha256}$<suffix>`,
+);
 await Bun.write(formulaPath, rb);
 
-console.log(`Wrote ${tarPath}`);
-console.log(`sha256 ${sha256}`);
-console.log(`Updated Formula/aic.rb → version ${version}`);
+process.stdout.write(
+  `Wrote ${tarPath}\nsha256 ${sha256}\nUpdated Formula/aic.rb → version ${version}\n`,
+);

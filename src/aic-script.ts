@@ -1,7 +1,10 @@
+#!/usr/bin/env bun
+
 import type { spinner } from '@clack/prompts';
 import { Effect } from 'effect';
 
-import type { AicConfig } from './types';
+import type { AicConfig } from './domain/types';
+import { AicScriptError } from './errors/aic-script-error';
 import { theme } from './ui/theme';
 
 const AIC_CONFIG_PATH = '.aic';
@@ -25,8 +28,8 @@ const parseAicContent = (content: string): AicConfig => {
         const fullLine = pendingLine + trimmed;
         pendingLine = '';
 
-        const sectionMatch = /^\[(\w+)\]$/u.exec(fullLine);
-        const section = sectionMatch?.[1];
+        const sectionMatch = /^\[(?<section>\w+)\]$/u.exec(fullLine);
+        const section = sectionMatch?.groups?.['section'];
         if (section !== undefined && isAicSection(section)) {
           currentSection = section;
           config[currentSection] = [];
@@ -52,23 +55,19 @@ const parseAicConfig = async (): Promise<AicConfig | null> => {
 
 const hasAicConfig = (): Promise<boolean> => Bun.file(AIC_CONFIG_PATH).exists();
 
-const waitForCommand = (cmd: string): Effect.Effect<number, unknown> =>
-  Effect.tryPromise(async () => {
-    const proc = Bun.spawn({
-      cmd: ['sh', '-c', cmd],
-      stderr: 'inherit',
-      stdin: 'inherit',
-      stdout: 'inherit',
-    });
-    const abort = (): void => {
-      proc.kill('SIGINT');
-    };
-    process.once('SIGINT', abort);
-    try {
-      return await proc.exited;
-    } finally {
-      process.off('SIGINT', abort);
-    }
+const waitForCommand = (cmd: string): Effect.Effect<number, AicScriptError> =>
+  Effect.tryPromise({
+    catch: (cause) =>
+      new AicScriptError({ cause, message: `Failed to execute configured command: ${cmd}` }),
+    try: () => {
+      const proc = Bun.spawn({
+        cmd: ['sh', '-c', cmd],
+        stderr: 'inherit',
+        stdin: 'inherit',
+        stdout: 'inherit',
+      });
+      return proc.exited;
+    },
   });
 
 const executeCommand = (
@@ -111,6 +110,9 @@ const executeSection = (
             return true;
           }
           const cmd = commands[index];
+          if (cmd === undefined) {
+            return true;
+          }
           options.onCommand?.(cmd);
 
           if (options.dryRun !== true) {
@@ -167,6 +169,9 @@ const executeSectionWithProgress = (
             return true;
           }
           const cmd = commands[index];
+          if (cmd === undefined) {
+            return true;
+          }
           const success = yield* runProgressCommand(cmd, index + 1, commands.length, s);
           if (!success) {
             return false;
@@ -266,7 +271,7 @@ export const getDefaultAicTemplate = (projectType: string): string => {
     rust: RUST_TEMPLATE,
   };
 
-  return templates[projectType] ?? templates['default'];
+  return templates[projectType] ?? DEFAULT_TEMPLATE;
 };
 
 export const initAicConfig = async (projectType: string): Promise<void> => {

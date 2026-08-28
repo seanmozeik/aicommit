@@ -4,6 +4,9 @@ default:
 check:
 	bun run check
 
+test:
+	bun test
+
 dev:
 	bun run dev
 

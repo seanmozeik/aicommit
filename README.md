@@ -5,6 +5,7 @@ AI-powered conventional commit message generator.
 ## Features
 
 - Generates one-line conventional commit messages from git diffs
+- First-class GPT-5.6 Luna preset through Codex CLI with medium reasoning and fast mode
 - Supports arbitrary OpenAI-compatible chat completion endpoints
 - Preset-based provider configuration with secure credential storage
 - Built-in `claude` preset for Claude CLI
@@ -34,7 +35,7 @@ bun run build
 
 ## Setup
 
-aic can use built-in CLI providers or named OpenAI-compatible presets.
+aic can use built-in CLI providers, a named Codex CLI Luna preset, or named OpenAI-compatible presets.
 
 ### Built-In Presets
 
@@ -46,9 +47,15 @@ aic --preset codex
 - `claude` uses the Claude CLI.
 - `codex` uses `codex exec` headlessly with `gpt-5.4-mini` and low reasoning.
 
-### OpenAI-Compatible Presets
+### Codex GPT-5.6 Luna
 
-Use `aic setup` for OpenAI, OpenRouter, local LM Studio/Ollama-compatible servers, or any endpoint exposing `/v1/chat/completions`.
+Run `aic setup` and choose **Codex GPT-5.6 Luna**. The saved preset invokes the installed Codex CLI with model `gpt-5.6-luna`, medium reasoning, `service_tier = "fast"`, and `features.fast_mode = true`. AICommit uses the model catalog's 272,000-token context window for prompt budgeting. It does not request or store an OpenAI API key for Luna.
+
+This preset requires an installed, authenticated Codex CLI. With ChatGPT sign-in, fast mode consumes ChatGPT credits at the fast-mode rate.
+
+### Custom OpenAI-Compatible Presets
+
+The custom option in `aic setup` remains available for OpenRouter, local LM Studio/Ollama-compatible servers, and other endpoints exposing `/v1/chat/completions`. AICommit rejects non-HTTPS remote endpoints; plain HTTP remains available only for loopback development servers.
 
 ```bash
 aic setup
@@ -62,11 +69,10 @@ Setup stores:
 - model name
 - model context window
 
-Presets are stored in the OS credential store: macOS Keychain, Linux libsecret, or Windows Credential Manager.
+Named preset metadata and custom API credentials are stored in the OS credential store: macOS Keychain, Linux libsecret, or Windows Credential Manager.
 
-Examples:
+Custom examples:
 
-- OpenAI: `https://api.openai.com/v1`
 - OpenRouter: `https://openrouter.ai/api/v1`
 - Local: `http://localhost:1234/v1`
 
@@ -88,6 +94,7 @@ aic
 
 # Use a specific provider
 aic --preset codex
+aic --preset luna
 aic --preset openrouter
 ```
 
@@ -139,7 +146,7 @@ aic release major # 0.3.10 -> 1.0.0
    - source files before tests/docs/generated files
    - added lines before removed/replaced evidence
    - likely formatting noise marked as low signal
-5. Packs context to a fraction of the configured model window.
+5. Packs the complete request—fixed instructions, diff, files, semantics, and history—within the configured model window after reserving output tokens and a safety margin.
 6. Asks the selected provider for a conventional commit message.
 
 ## Requirements

@@ -1,6 +1,6 @@
-export { CONFIG_DIR_NAME, KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE } from './constants.js';
-export { loadUserConfig, type AicUserConfig, type ResolvedUserConfig } from './config.js';
-export { configJsonPath, configRoot, configTomlPath, expandHome } from './paths.js';
+export { CONFIG_DIR_NAME, KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE } from './config/constants.js';
+export { loadUserConfig, type AicUserConfig, type ResolvedUserConfig } from './config/user.js';
+export { configJsonPath, configRoot, configTomlPath, expandHome } from './config/paths.js';
 export {
   deletePreset,
   deleteSecretBlob,
@@ -12,4 +12,4 @@ export {
   savePreset,
   type Preset,
   type SecretBlob,
-} from './secrets.js';
+} from './config/secrets.js';

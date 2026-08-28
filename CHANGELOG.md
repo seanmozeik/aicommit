@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added a first-class GPT-5.6 Luna preset that invokes Codex CLI with medium reasoning and fast mode.
+
+### Changed
+
+- Upgraded prompt and tokenization dependencies, bounded complete commit and changelog requests, and restricted retries to transient failures.
+- Scoped Claude and Codex child processes and Codex temporary files, with deterministic timeout and interruption cleanup.
+
+### Fixed
+
+- Hardened preset validation, credential transport, teardown confirmation, release preflight, Go version detection, and cancellation handling.
+- Aligned release archives, Homebrew installation, and version-specific GitHub release uploads.
+
 ## [0.4.0] - 2026-05-09
 
 ### Added

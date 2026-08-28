@@ -12,21 +12,32 @@
     "skipLibCheck": true,
     "isolatedModules": true,
 
-    "noUncheckedIndexedAccess": false,
-    "noImplicitReturns": false,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "allowUnreachableCode": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "allowUnreachableCode": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
-    "exactOptionalPropertyTypes": false,
+    "exactOptionalPropertyTypes": true,
 
     "outDir": "dist",
     "rootDir": ".",
     "incremental": true,
-    "sourceMap": true
+    "sourceMap": true,
+
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "catchToIgnore": "off",
+          "preferSchemaOverJson": "off",
+          "syncToSucceed": "off"
+        }
+      }
+    ]
   },
-  "include": ["src/**/*", "scripts/**/*", "tests/**/*"],
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
 }

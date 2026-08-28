@@ -1,9 +1,8 @@
-/* oxlint-disable no-console */
 import boxen from 'boxen';
 import gradient from 'gradient-string';
 
+import type { ClassifiedFiles, FileDiff } from '../domain/types';
 import { getRecentCommits, getSubmodulePaths } from '../git';
-import type { ClassifiedFiles, FileDiff } from '../types';
 import { boxColors, frappeColors, gradientColors, theme } from './theme';
 
 // Visual bar settings
@@ -18,6 +17,10 @@ const DEFAULT_COMMIT_COUNT = 3;
 // Gradient for bars
 const addGradient = gradient([...gradientColors.success]);
 const delGradient = gradient([...gradientColors.error]);
+
+const writeLine = (text = ''): void => {
+  process.stdout.write(`${text}\n`);
+};
 
 /**
  * Generate a visual bar with gradients showing the proportion of changes
@@ -164,7 +167,7 @@ const displayFilesSection = (
     title: `Files  ${lineStats}`,
     titleAlignment: 'left',
   });
-  console.log(filesBox);
+  writeLine(filesBox);
 };
 
 /**
@@ -176,7 +179,7 @@ const displayCommitsSection = async (): Promise<void> => {
   if (commits.length > 0) {
     const commitsContent = commits
       .map((commit) => {
-        const [hash, ...messageParts] = commit.split(' ');
+        const [hash = '', ...messageParts] = commit.split(' ');
         const message = messageParts.join(' ');
         return `${frappeColors.yellow(hash)} ${frappeColors.subtext1(message)}`;
       })
@@ -190,7 +193,7 @@ const displayCommitsSection = async (): Promise<void> => {
       title: 'Recent Commits',
       titleAlignment: 'left',
     });
-    console.log(commitsBox);
+    writeLine(commitsBox);
   }
 };
 
@@ -212,7 +215,7 @@ export const displayContextPanel = async (
   await displayCommitsSection();
 
   // Add spacing after context panel
-  console.log();
+  writeLine();
 };
 
 /**
@@ -226,26 +229,26 @@ export const displayCommitMessage = (message: string): void => {
     title: 'Commit Message',
     titleAlignment: 'center',
   });
-  console.log(messageBox);
+  writeLine(messageBox);
 };
 
 /**
  * Display a success message
  */
 export const displaySuccess = (message: string): void => {
-  console.log(theme.success(`\n${message}\n`));
+  writeLine(theme.success(`\n${message}\n`));
 };
 
 /**
  * Display an error message
  */
 export const displayError = (message: string): void => {
-  console.log(theme.error(`\n${message}\n`));
+  writeLine(theme.error(`\n${message}\n`));
 };
 
 /**
  * Display a warning message
  */
 export const displayWarning = (message: string): void => {
-  console.log(theme.warning(`\n${message}\n`));
+  writeLine(theme.warning(`\n${message}\n`));
 };

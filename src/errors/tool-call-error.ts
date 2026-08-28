@@ -5,8 +5,8 @@ import { Schema } from 'effect';
  * This is distinct from general API errors as it indicates a model behavior issue rather
  * than a network or API problem.
  */
-export class ToolCallError extends Schema.TaggedErrorClass<ToolCallError>()('ToolCallError', {
+export class ToolCallError extends Schema.TaggedError<ToolCallError>()('ToolCallError', {
   finishReason: Schema.String,
   message: Schema.String,
-  toolCallsCount: Schema.Number,
+  toolCallsCount: Schema.Finite,
 }) {}
