@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added a first-class GPT-5.6 Luna preset that invokes Codex CLI with medium reasoning and fast mode.
+- Added a first-class GPT-5.6 Luna preset that invokes Codex CLI with low reasoning and fast mode.
 
 ### Changed
 
@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Migrated stored Codex Luna medium presets to low reasoning and surfaced underlying CLI failure messages.
 - Hardened preset validation, credential transport, teardown confirmation, release preflight, Go version detection, and cancellation handling.
 - Aligned release archives, Homebrew installation, and version-specific GitHub release uploads.
 

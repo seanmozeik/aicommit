@@ -65,7 +65,7 @@ BunTest.afterEach(async () => {
   await rm(testDirectory, { force: true, recursive: true });
 });
 
-BunTest.test('Luna uses Codex CLI medium reasoning and fast mode', () => {
+BunTest.test('Luna uses Codex CLI low reasoning and fast mode', () => {
   const { model, reasoningEffort, serviceTier } = makeLunaPreset();
   BunTest.expect(
     buildCodexArgs('schema.json', 'output.json', { model, reasoningEffort, serviceTier }),
@@ -78,7 +78,7 @@ BunTest.test('Luna uses Codex CLI medium reasoning and fast mode', () => {
     '--model',
     'gpt-5.6-luna',
     '--config',
-    'model_reasoning_effort="medium"',
+    'model_reasoning_effort="low"',
     '--config',
     'service_tier="fast"',
     '--sandbox',

@@ -5,7 +5,7 @@ AI-powered conventional commit message generator.
 ## Features
 
 - Generates one-line conventional commit messages from git diffs
-- First-class GPT-5.6 Luna preset through Codex CLI with medium reasoning and fast mode
+- First-class GPT-5.6 Luna preset through Codex CLI with low reasoning and fast mode
 - Supports arbitrary OpenAI-compatible chat completion endpoints
 - Preset-based provider configuration with secure credential storage
 - Built-in `claude` preset for Claude CLI
@@ -49,7 +49,7 @@ aic --preset codex
 
 ### Codex GPT-5.6 Luna
 
-Run `aic setup` and choose **Codex GPT-5.6 Luna**. The saved preset invokes the installed Codex CLI with model `gpt-5.6-luna`, medium reasoning, `service_tier = "fast"`, and `features.fast_mode = true`. AICommit uses the model catalog's 272,000-token context window for prompt budgeting. It does not request or store an OpenAI API key for Luna.
+Run `aic setup` and choose **Codex GPT-5.6 Luna**. The saved preset invokes the installed Codex CLI with model `gpt-5.6-luna`, low reasoning, `service_tier = "fast"`, and `features.fast_mode = true`. AICommit uses the model catalog's 272,000-token context window for prompt budgeting. It does not request or store an OpenAI API key for Luna.
 
 This preset requires an installed, authenticated Codex CLI. With ChatGPT sign-in, fast mode consumes ChatGPT credits at the fast-mode rate.
 

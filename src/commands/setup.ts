@@ -104,7 +104,7 @@ export const makeLunaPreset = (): CodexCliPreset => ({
   contextWindow: CODEX_LUNA_CONTEXT_WINDOW,
   model: CODEX_LUNA_MODEL,
   provider: 'codex-cli',
-  reasoningEffort: 'medium',
+  reasoningEffort: 'low',
   serviceTier: 'fast',
 });
 
@@ -131,7 +131,7 @@ const promptPresetKind = (): Effect.Effect<PresetKind, SetupError> =>
       message: 'Choose a provider preset:',
       options: [
         {
-          hint: 'Codex CLI, medium reasoning, fast mode',
+          hint: 'Codex CLI, low reasoning, fast mode',
           label: 'Codex GPT-5.6 Luna',
           value: 'codex-luna' as const,
         },

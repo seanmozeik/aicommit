@@ -16,7 +16,7 @@ export interface CodexCliPreset {
   readonly contextWindow: number;
   readonly model: string;
   readonly provider: 'codex-cli';
-  readonly reasoningEffort: 'medium';
+  readonly reasoningEffort: 'low';
   readonly serviceTier: 'fast';
 }
 
@@ -39,7 +39,7 @@ const codexCliPresetSchema = Schema.Struct({
   contextWindow: positiveInteger,
   model: Schema.String,
   provider: Schema.Literal('codex-cli'),
-  reasoningEffort: Schema.Literal('medium'),
+  reasoningEffort: Schema.Literal('low'),
   serviceTier: Schema.Literal('fast'),
 });
 const legacyOpenAiLunaPresetSchema = Schema.Struct({
@@ -51,9 +51,20 @@ const legacyOpenAiLunaPresetSchema = Schema.Struct({
   reasoningEffort: Schema.Literal('medium'),
   serviceTier: Schema.Literal('fast'),
 });
+const legacyCodexMediumPresetSchema = Schema.Struct({
+  contextWindow: positiveInteger,
+  model: Schema.Literal(CODEX_LUNA_MODEL),
+  provider: Schema.Literal('codex-cli'),
+  reasoningEffort: Schema.Literal('medium'),
+  serviceTier: Schema.Literal('fast'),
+});
 
 export const presetSchema = Schema.Union([codexCliPresetSchema, openAiCompatiblePresetSchema]);
-const storedPresetSchema = Schema.Union([legacyOpenAiLunaPresetSchema, presetSchema]);
+const storedPresetSchema = Schema.Union([
+  legacyOpenAiLunaPresetSchema,
+  legacyCodexMediumPresetSchema,
+  presetSchema,
+]);
 type StoredPreset = typeof storedPresetSchema.Type;
 const decodeStoredPreset = Schema.decodeUnknownOption(storedPresetSchema);
 const storedSecretBlobSchema = Schema.Struct({
@@ -63,12 +74,12 @@ const storedSecretBlobSchema = Schema.Struct({
 const decodeStoredSecretBlob = Schema.decodeUnknownOption(storedSecretBlobSchema);
 
 const migrateStoredPreset = (preset: StoredPreset): Preset =>
-  'provider' in preset && preset.provider === 'openai'
+  'provider' in preset && (preset.provider === 'openai' || preset.reasoningEffort === 'medium')
     ? {
         contextWindow: CODEX_LUNA_CONTEXT_WINDOW,
         model: CODEX_LUNA_MODEL,
         provider: 'codex-cli',
-        reasoningEffort: 'medium',
+        reasoningEffort: 'low',
         serviceTier: 'fast',
       }
     : preset;

@@ -18,7 +18,7 @@ const codexLunaPreset = {
   contextWindow: 272_000,
   model: 'gpt-5.6-luna',
   provider: 'codex-cli' as const,
-  reasoningEffort: 'medium' as const,
+  reasoningEffort: 'low' as const,
   serviceTier: 'fast' as const,
 };
 
@@ -48,6 +48,21 @@ BunTest.test('legacy OpenAI Luna presets migrate to Codex CLI without API creden
   });
 
   BunTest.expect(migrated?.presets['luna']).toEqual(codexLunaPreset);
+});
+BunTest.test('previous Codex Luna medium presets migrate to low reasoning', () => {
+  const migrated = decodeSecretBlobValue({
+    defaultPreset: 'luna',
+    presets: {
+      luna: {
+        contextWindow: 272_000,
+        model: 'gpt-5.6-luna',
+        provider: 'codex-cli',
+        reasoningEffort: 'medium',
+        serviceTier: 'fast',
+      },
+    },
+  });
+  BunTest.expect(migrated).toEqual({ defaultPreset: 'luna', presets: { luna: codexLunaPreset } });
 });
 
 BunTest.test('preset schema rejects invalid context windows before persistence', () => {

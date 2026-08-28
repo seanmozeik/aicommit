@@ -33,7 +33,7 @@ BunTest.test('first-class Luna setup fixes the Codex CLI controls', () => {
     contextWindow: 272_000,
     model: 'gpt-5.6-luna',
     provider: 'codex-cli',
-    reasoningEffort: 'medium',
+    reasoningEffort: 'low',
     serviceTier: 'fast',
   });
 });
